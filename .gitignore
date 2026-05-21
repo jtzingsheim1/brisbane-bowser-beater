@@ -23,10 +23,10 @@ dist/
 /coverage
 
 # Local env files (NEVER commit secrets)
+# Specific patterns (NOT .env* — that would also block the .env.local.example template)
 .env
 .env.local
 .env.*.local
-.env*
 
 # Vercel
 .vercel
