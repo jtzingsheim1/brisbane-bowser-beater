@@ -309,6 +309,7 @@ Most conventions inherit from the global standards. Project-specific notes:
 - No PII written to Supabase. Caches keyed on hashes of inputs, not raw inputs.
 - Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `/lib/forecast/` is TS-only.
 - Agent responses stream tool calls visibly to the user — part of the product's transparency story.
+- **Supabase tables need explicit GRANTs.** The project's "Automatically expose new tables" setting is OFF (deliberate — explicit control over the Data API surface). Every new table needs `grant select on <table> to anon` and `grant all on <table> to service_role` in its migration. Migration 0004 sets `alter default privileges` for future tables, but verify each migration grants explicitly as belt-and-braces — default privileges only cover tables created by the same role that ran the ALTER, which may not be the role running future migrations.
 
 ---
 
