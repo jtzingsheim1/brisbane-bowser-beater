@@ -286,7 +286,7 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 
 | LUL clause | Obligation | How we satisfy it |
 |---|---|---|
-| 2.3 — freshness | Price changes published within 30 min; other data within 24 hr | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; lookup tables (sites, brands, fuels, regions) refreshed weekly |
+| 2.3 — freshness | Price changes published within 30 min; other data within 24 hr | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly |
 | 2.2 — value-added products | Allowed if Licensed Data is irreversibly transformed or augmented | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
 | 4.2 / 4.3 — attribution | Two verbatim notices required (raw-data + derived-product) | Both notices appear verbatim on `/about/data` page, linked from footer on every page |
 | 4.4 — provenance | Distinguish QLD data from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
