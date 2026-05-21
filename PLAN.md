@@ -50,6 +50,14 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 - Vercel project connected to GitHub repo, env vars set
 - Local dev working
 
+**Deferred sub-task — create GitHub remote** (not needed until Vercel hookup or first backup push):
+
+```bash
+gh repo create brisbane-bowser-beater --public --source=. --push --description "A web app for Brisbane drivers, combining live fuel price data with an AI-powered fuel strategist."
+```
+
+Creates `jtzingsheim1/brisbane-bowser-beater` (public), wires up `origin`, pushes `main` — one shot. Run whenever ready.
+
 ### Phase 2 — Data ingestion + forecast model
 
 > **Expect a collaborative deep-dive here.** Justin has flagged interest in nerding out on the forecast model design together. Don't speed through this phase — pause for interactive discussion at: (a) raw data shape findings, (b) cycle parameterisation method choice, (c) outlier exclusion rules, (d) projection algorithm. Methods follow what the data reveals; no method choices locked in advance.
