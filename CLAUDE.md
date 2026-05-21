@@ -23,29 +23,32 @@ In the interim (and ongoing):
 
 ## Product
 
-Single page, two stacked sections plus an agent layer.
+Single page. One section + agent layer. Aggregate-only display — **no per-station prices** anywhere on the public surface.
 
 ### Section 1 — "When to fill up"
 
-- **Chart**: ~90-day window of Brisbane area average U91 price (~60 days history + ~30 days forecast). Recharts.
+- **Chart**: ~90-day window of **Brisbane area average** U91 price (~60 days history from CC BY backfill + ongoing daily aggregates from live API + ~30 days forecast). Recharts. Single line — never per-station.
 - **Static educational copy below the chart** explaining the cycle — always visible, for first-time visitors.
-- **Daily narrative line** (generated during ingestion, cached for the day). Example: *"Brisbane is mid-cycle peak; next trough expected ~Tue 28th. Fill now only if you're nearly empty."*
+- **Daily narrative line** (generated daily, cached). Example: *"Brisbane is mid-cycle peak; next trough expected ~Tue 28th. Fill now only if you're nearly empty."*
 - **AI fuel strategist agent** (see Agent section below).
 
-### Section 2 — "Where to fill up right now"
+### Section 2 — cut from MVP
 
-- **Input**: Postcode/suburb text field, defaults to "Brisbane CBD". No browser geolocation in MVP.
-- **Output**: Sorted list of ~10 nearby stations. Each row shows brand, name, **street address**, current price. No distance column (we only know postcode, not exact location).
-- **Top result tagged "Best deal"**.
-- **Per-row "remove" control** — hides a station and re-ranks. Excluded IDs in URL query params or `sessionStorage`.
-- **No AI in this section** — pure rule-based query → sort.
+Per-station ("where to fill up right now") was originally planned but has been **cut from MVP** for two reasons:
+
+1. Per-station display materially expands our publisher-licence exposure (every station's price would need verbatim attribution + 30-min freshness against the per-station feed).
+2. The differentiated value of this project — the cycle awareness and the agent strategy — lives in Section 1. Per-station lookups are already well-served by PetrolSpy, 7-Eleven Fuel, etc.
+
+Captured in the backlog for post-MVP re-evaluation.
 
 ### Page-wide UI elements
 
-These appear on every page, not specific to either section:
+These appear on every page:
 
 - **Privacy/trust pane** — positioned near agent input. Content described in Agent section below.
 - **Footer disclaimer** — *"General information only. Fuel prices and forecasts are estimates — verify before you fill."* See Legal hygiene section.
+- **`/about/data` page** linked from footer — carries the verbatim QLD attribution notices required by the publisher licence (LUL clauses 4.2 / 4.3).
+- **Maintenance / kill-switch page** — see "Operational hygiene → off-switch" below. Rendered automatically when data is stale or manually when paused.
 
 ---
 
@@ -107,8 +110,9 @@ IP handling is deliberately not mentioned (server-side IPs are a normal infra co
 | Tool | Purpose |
 |---|---|
 | `get_forecast()` | Today's cached forecast — cycle position, predicted next trough date, confidence, typical cycle length |
-| `get_recent_history(days)` | Brisbane area daily averages for context |
-| `get_today_spread()` | Today's area-wide P10/P50/P90 — so the agent can frame "even at today's peak, most stations are above $X" |
+| `get_recent_history(days)` | Brisbane area daily aggregate averages for context |
+
+Two tools, not three — `get_today_spread()` was dropped along with Section 2 because per-station spread isn't part of the public surface anymore.
 
 Agent decides which to call, in what order, based on user's situation. Streaming visible to the user (visible tool calls). Plan output cached per `(situation_hash, day)` in Supabase.
 
@@ -144,7 +148,7 @@ Split into three stages:
 | Stage | Where | What |
 |---|---|---|
 | **1. Cycle characterisation** (one-time) | Python notebook in `/analysis/` | Pull max historical data → detect troughs/peaks → parameterise cycle (period, asymmetry, amplitude) → exclude outlier cycles → output `cycle_params.json` |
-| **2. Daily projection** | TS, Vercel cron after ingestion | Read `cycle_params.json` → anchor canonical shape to most recent observed pivot → project ~30 days forward → write `forecasts` table |
+| **2. Daily projection** | TS, runs after each ingestion (30-min cadence; projection itself only needs to run once a day) | Read `cycle_params.json` → anchor canonical shape to most recent observed Brisbane aggregate → project ~30 days forward → write `forecasts` table |
 | **3. Occasional re-fit** (~quarterly) | Manual rerun of Stage 1 | Refresh parameters, document drift |
 
 **Empirical, not prescribed.** Specific peak-detection algorithm, outlier thresholds, parameter list, and shape representation get chosen inside the notebook based on what the data actually shows. Cycle shape (sawtooth, sinusoidal, hybrid) is an empirical question — the production code is shape-agnostic by using the characterised template, not a hardcoded functional form.
@@ -188,6 +192,25 @@ Realistic target: under $20/month worst case, under $10 with caching.
 
 ---
 
+## Operational hygiene — the off-switch
+
+The project should be safe to launch, walk away from, and take down without monitoring. Three layers:
+
+**1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (initial setting: 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails.
+
+**2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Two clicks in the Vercel dashboard, no code change, no race conditions.
+
+**3. Permanent exit path.** When done:
+- Set `BBB_PUBLIC=false` (immediate visible takedown)
+- Disable the GitHub Actions cron (one click in repo settings)
+- Email QLD per LUL clause 1.5 to terminate the agreement
+- Optionally purge `price_snapshots` / `forecasts` per clause 4.6
+- Optionally take Vercel deployment down
+
+The first two are instant; the rest can be done at leisure without licence panic.
+
+---
+
 ## Scope
 
 ### Out of MVP (explicit cuts)
@@ -207,13 +230,13 @@ Realistic target: under $20/month worst case, under $10 with caching.
 | SEO / analytics / error monitoring | Out |
 | "Explain the cycle" 5th starter chip | Backlog — interesting but not MVP |
 | Long-form privacy page | Only if ever needed |
+| **Section 2: per-station price list with postcode search** | Cut — materially expands publisher-licence exposure (per-station attribution + 30-min freshness), and the cycle/agent in Section 1 carries the differentiated value. Per-station lookups already well-served by PetrolSpy etc. Backlog candidate for post-MVP. |
 
 ### Knowingly temporary (documented in README roadmap)
 
 - Hardcoded Brisbane Metro / U91 → user-selectable
-- Postcode-only input → geolocation-aware
+- No per-station data → restore Section 2 if licence/UX trade-off changes
 - No accounts → account scaffolding when personalisation deepens
-- Cron-pulled snapshot → may become real-time push
 - Web-only UI → mobile-first when the "on the move" feature lands
 
 ---
@@ -256,6 +279,24 @@ Australian defamation law is plaintiff-friendly. Retail fuel companies are well-
 - The agent must not name specific retailers in negative framing
 - The agent must not invent specific savings figures or guarantee outcomes
 - If a user prompts the agent toward accusatory framing, the agent should decline gracefully and redirect to its actual job (helping the user time their fills)
+
+### Publisher licence (QLD LUL) obligations
+
+We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Material obligations and how we satisfy each:
+
+| LUL clause | Obligation | How we satisfy it |
+|---|---|---|
+| 2.3 — freshness | Price changes published within 30 min; other data within 24 hr | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; lookup tables (sites, brands, fuels, regions) refreshed weekly |
+| 2.2 — value-added products | Allowed if Licensed Data is irreversibly transformed or augmented | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
+| 4.2 / 4.3 — attribution | Two verbatim notices required (raw-data + derived-product) | Both notices appear verbatim on `/about/data` page, linked from footer on every page |
+| 4.4 — provenance | Distinguish QLD data from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
+| 4.8 — usage data | Active/new/returning users per month, with region split, on request within 10 business days | Server-side aggregate counts from request logs + IP-region lookup. No cookies, no behavioural tracking. Reconcilable with privacy/trust pane — see operational note below |
+| 5.x — audit | Cooperate with reasonable Licensor audits | Document our data flow in `/about/data` and code comments; aggregate logs available if requested |
+| 6.3 — indemnity | We indemnify Licensor for our use | Standard. Footer disclaimer + forecast/estimate framing already minimise our exposure |
+| 1.4 — fee | $1 on demand | Symbolic. Pay if asked. |
+| 1.5 — termination | Either side, 20 business days notice (3 days if our publication is "not current or accurate") | The operational off-switch (see "Operational hygiene") gives us a clean wind-down path |
+
+**Privacy/trust pane reconciliation**: the "no analytics, no tracking, no cookies that follow you around" claim stays literally true under server-side aggregate counts (no cookies, no client JS, no per-user identity). If we ever want extra trust currency we can update one bullet to acknowledge the aggregate counts transparently — see PLAN.md Phase 3.
 
 ---
 
