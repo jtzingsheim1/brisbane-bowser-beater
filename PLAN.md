@@ -9,7 +9,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase | Status |
 |---|---|
 | Phase 0 — Discovery | ✅ Complete |
-| Phase 1 — Scaffold | 🔜 Next |
+| Phase 1 — Scaffold | ✅ Mostly complete (Vercel hookup deferred to Phase 8) |
 | Phase 2 — Data ingestion + forecast model | Pending |
 | Phase 3 — Static UI | Pending |
 | Phase 4 — Agent layer | Pending |
@@ -45,18 +45,26 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 
 ### Phase 1 — Scaffold
 
-- Next.js 16 (App Router) + React 19 + TypeScript strict
-- Supabase project created, schema versioned via migrations
-- Vercel project connected to GitHub repo, env vars set
-- Local dev working
+| Sub-task | Status |
+|---|---|
+| Next.js 16 (App Router) + React 19 + TypeScript strict | ✅ Verified via `npm run build` |
+| Tailwind v4 | ✅ Done (added during scaffold) |
+| GitHub remote at `jtzingsheim1/brisbane-bowser-beater` (public) | ✅ Done |
+| Supabase project (RLS auto-enable on, Data API auto-expose off) | ✅ Done |
+| `.env.local` populated (publishable URL + publishable key + secret key) | ✅ Verified via `npm run verify:supabase` |
+| `@supabase/supabase-js` client factories in `src/lib/supabase/server.ts` | ✅ Done |
+| Supabase CLI as dev dep + `supabase/` folder scaffolded | ✅ Done |
+| Supabase ↔ GitHub integration enabled in dashboard | ⏳ Justin to confirm — Project Settings → Integrations → GitHub → "Deploy to production" ON |
+| First migration | Phase 2 |
+| Vercel project hookup + env vars | **Deferred to Phase 8** (not blocking dev work) |
 
-**Deferred sub-task — create GitHub remote** (not needed until Vercel hookup or first backup push):
+**Connectivity check after env changes:**
 
 ```bash
-gh repo create brisbane-bowser-beater --public --source=. --push --description "A web app for Brisbane drivers, combining live fuel price data with an AI-powered fuel strategist."
+npm run verify:supabase
 ```
 
-Creates `jtzingsheim1/brisbane-bowser-beater` (public), wires up `origin`, pushes `main` — one shot. Run whenever ready.
+Exercises both publishable and secret keys against the data API. Never prints key values. Local-only check — independent of the GitHub integration deploy pipeline.
 
 ### Phase 2 — Data ingestion + forecast model
 
