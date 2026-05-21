@@ -72,8 +72,10 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 
 > **Phase 2 is the biggest phase** — break execution into chunks rather than trying to land it in one stretch. Natural chunks: (1) ingestion pipeline + cron + Supabase schema, (2) Python notebook data exploration, (3) cycle characterisation + `cycle_params.json` output, (4) TS daily projection writing to `forecasts` table, (5) update CLAUDE.md cycle figures from measured values. Each is a sensible commit/checkpoint.
 
-- Integrate QLD Fuel Price Reporting API (free, no auth — https://www.qld.gov.au/transport/projects/fuelprice/data)
-- Vercel Cron job (daily, single ingestion run — sufficient for this phase)
+- **Register as a data consumer** at [fuelpricesqld.com.au](https://www.fuelpricesqld.com.au) (one-time; Justin to do). Accept the Limited Use Licence; receive a security token by email; paste into `.env.local` as `QLD_FUEL_API_TOKEN`. API spec saved at `docs/external/qld_fuel_api_swagger.json`.
+- **Schema** lives in `supabase/migrations/`. Reference tables (`fuels`, `brands`, `geo_regions`), `sites`, time-series `price_snapshots`, `forecasts`, and `daily_narrative`. RLS enabled on all tables with anon SELECT policies; writes only via service_role (cron). First migration: `20260521180000_create_fuel_core_schema.sql`.
+- **Historical backfill** (one-time): import the QLD open-data CSV from [data.qld.gov.au/dataset/fuel-price-reporting-2025](https://www.data.qld.gov.au/dataset/fuel-price-reporting-2025) into `price_snapshots` so the chart works from day 1. The live API only returns current prices, not history.
+- **Vercel Cron** job (daily, single ingestion run — sufficient for this phase): refresh reference tables weekly, refresh `sites` weekly, snapshot `/Price/GetSitesPrices` daily, regenerate daily narrative + forecasts daily.
 - Python notebook `/analysis/brisbane_cycle.ipynb`:
   - Pull max historical data
   - Visualise raw series; characterise actual cycle shape empirically
