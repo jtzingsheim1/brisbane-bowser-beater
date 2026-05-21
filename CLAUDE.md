@@ -133,7 +133,7 @@ Concrete, dated, with reasoning. Example:
 | Rate limiting | Upstash Redis (Vercel marketplace free tier) |
 | Charting | Recharts |
 | Cycle analysis (one-time, offline) | Python (Jupyter notebook in `/analysis/`) |
-| Data source | QLD Fuel Price Reporting API (free; requires data-consumer registration + security token via fuelpricesqld.com.au). For end users of this app, no account / auth is ever required. |
+| Data source | QLD Fuel Price Reporting API. Registration required as a **publisher** (their term for any app that displays prices to motorists) at fuelpricesqld.com.au; security token by email. Subject to the publisher licence + any attribution rules. For end users of this app, no account / auth is ever required. |
 
 ---
 
