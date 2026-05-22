@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { connection } from "next/server";
 import Footer from "@/components/Footer";
 import MaintenanceNotice from "@/components/MaintenanceNotice";
 import { isKillSwitchEngaged, isStale } from "@/lib/freshness";
 import "./globals.css";
-
-export const dynamic = "force-dynamic";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,6 +23,13 @@ export const metadata: Metadata = {
 };
 
 async function shouldShowMaintenance(): Promise<boolean> {
+  // Opts the layout into dynamic rendering — env reads + the staleness
+  // check both need to happen per-request, not at build time. Replaces
+  // the previous `export const dynamic = "force-dynamic"`; using
+  // `connection()` at the call site keeps the dynamic boundary scoped
+  // to this check rather than every leaf route segment.
+  await connection();
+
   if (isKillSwitchEngaged()) {
     return true;
   }
