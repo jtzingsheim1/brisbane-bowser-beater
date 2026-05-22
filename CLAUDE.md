@@ -100,7 +100,7 @@ Six bullets, plain language, lightly cheeky. Positioned so users see it *before*
 - We don't store your conversation. It goes to Anthropic to generate your plan, then it's gone on our side. (Anthropic's terms apply to their bit.)
 - No tracking, no analytics, no cookies that follow you around.
 - Caching is anonymous. Same situation gets the same plan — we hash the inputs, we don't keep them.
-- Only the planner is AI. The station ranking and forecast chart are deterministic.
+- Only the planner is AI. The forecast chart is deterministic.
 - It's all on GitHub. Don't trust this list? Read the code.
 
 IP handling is deliberately not mentioned (server-side IPs are a normal infra concern, not this pane's job — including them would draw attention to something users wouldn't otherwise think about).
@@ -131,7 +131,7 @@ Concrete, dated, with reasoning. Example:
 | Framework | Next.js 16 (App Router, Server Actions, RSC) |
 | UI | React 19 (strict) + TypeScript (strict mode) |
 | Database | Supabase (Postgres) |
-| Deployment | Vercel + Vercel Cron |
+| Deployment | Vercel (hosting) + GitHub Actions (cron — free for public repos, keeps Vercel Hobby clean) |
 | AI orchestration | Vercel AI SDK v6 |
 | LLM | Anthropic Claude API (direct, via `@ai-sdk/anthropic`) |
 | Rate limiting | Upstash Redis (Vercel marketplace free tier) |
@@ -152,8 +152,6 @@ Split into three stages:
 | **3. Occasional re-fit** (~quarterly) | Manual rerun of Stage 1 | Refresh parameters, document drift |
 
 **Empirical, not prescribed.** Specific peak-detection algorithm, outlier thresholds, parameter list, and shape representation get chosen inside the notebook based on what the data actually shows. Cycle shape (sawtooth, sinusoidal, hybrid) is an empirical question — the production code is shape-agnostic by using the characterised template, not a hardcoded functional form.
-
-**Cycle figures above** (period, swing, etc.) are stylised approximations. Phase 2 updates this section with measured values.
 
 ### Forecast uncertainty bands
 

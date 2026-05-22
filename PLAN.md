@@ -10,10 +10,10 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 |---|---|
 | Phase 0 — Discovery | ✅ Complete |
 | Phase 1 — Scaffold | ✅ Mostly complete (Vercel hookup deferred to Phase 8) |
-| Phase 2 — Data ingestion + forecast model | Pending |
-| Phase 3 — Static UI | Pending |
-| Phase 4 — Agent layer | Pending |
-| Phase 5 — Cost protection | Pending |
+| Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema + CSV backfill landed; notebook + projection pending) |
+| Phase 3 — Static UI | 🚧 In progress (`/about/data`, footer, PrivacyTrustPane, CycleEducation landed; chart + narrative + homepage wiring pending) |
+| Phase 4 — Agent layer | 🚧 Started (system prompt landed as a constant; API route, tools, streaming pending) |
+| Phase 5 — Cost protection + off-switch | 🚧 In progress (operational off-switch landed; cost protection layers pending) |
 | Phase 6 — Abuse audit | Pending |
 | Phase 7 — Public docs | Pending |
 | Phase 8 — Deploy + verify | Pending |

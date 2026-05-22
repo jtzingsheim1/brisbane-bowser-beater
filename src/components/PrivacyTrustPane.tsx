@@ -20,8 +20,7 @@ export default function PrivacyTrustPane() {
           hash the inputs, we don&rsquo;t keep them.
         </li>
         <li>
-          Only the planner is AI. The station ranking and forecast chart are
-          deterministic.
+          Only the planner is AI. The forecast chart is deterministic.
         </li>
         <li>
           It&rsquo;s all on GitHub. Don&rsquo;t trust this list? Read the code.
