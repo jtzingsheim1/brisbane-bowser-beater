@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Footer from "@/components/Footer";
+import MaintenanceNotice from "@/components/MaintenanceNotice";
+import { isKillSwitchEngaged, isStale } from "@/lib/freshness";
 import "./globals.css";
+
+export const dynamic = "force-dynamic";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,18 +23,37 @@ export const metadata: Metadata = {
     "A web app for Brisbane drivers, combining live fuel price data with an AI-powered fuel strategist.",
 };
 
-export default function RootLayout({
+async function shouldShowMaintenance(): Promise<boolean> {
+  if (isKillSwitchEngaged()) {
+    return true;
+  }
+  try {
+    return await isStale();
+  } catch (error) {
+    console.error(
+      "[freshness] staleness check failed; degrading to maintenance",
+      error,
+    );
+    return true;
+  }
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const maintenance = await shouldShowMaintenance();
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <div className="flex flex-1 flex-col">{children}</div>
+        <div className="flex flex-1 flex-col">
+          {maintenance ? <MaintenanceNotice /> : children}
+        </div>
         <Footer />
       </body>
     </html>
