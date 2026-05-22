@@ -9,11 +9,11 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase | Status |
 |---|---|
 | Phase 0 — Discovery | ✅ Complete |
-| Phase 1 — Scaffold | ✅ Mostly complete (Vercel hookup deferred to Phase 8) |
-| Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema + CSV backfill landed; notebook + projection pending) |
-| Phase 3 — Static UI | 🚧 In progress (`/about/data`, footer, PrivacyTrustPane, CycleEducation landed; chart + narrative + homepage wiring pending) |
-| Phase 4 — Agent layer | 🚧 Started (system prompt landed as a constant; API route, tools, streaming pending) |
-| Phase 5 — Cost protection + off-switch | 🚧 In progress (operational off-switch landed; cost protection layers pending) |
+| Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations 0001–0006 auto-applying on merge; Vercel hookup deferred to Phase 8) |
+| Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema, CSV backfill, and the `brisbane_daily_avg_u91` aggregate function landed; live 30-min cron, notebook, and TS projection still pending) |
+| Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
+| Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI shipped; chip selector + copy/tone polish and plan caching pending) |
+| Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
 | Phase 6 — Abuse audit | Pending |
 | Phase 7 — Public docs | Pending |
 | Phase 8 — Deploy + verify | Pending |
@@ -54,8 +54,8 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | `.env.local` populated (publishable URL + publishable key + secret key) | ✅ Verified via `npm run verify:supabase` |
 | `@supabase/supabase-js` client factories in `src/lib/supabase/server.ts` | ✅ Done |
 | Supabase CLI as dev dep + `supabase/` folder scaffolded | ✅ Done |
-| Supabase ↔ GitHub integration enabled in dashboard | ⏳ Justin to confirm — Project Settings → Integrations → GitHub → "Deploy to production" ON |
-| First migration | Phase 2 |
+| Supabase ↔ GitHub integration enabled in dashboard | ✅ Confirmed — migrations 0001–0006 have all auto-applied on merge to `main` |
+| First migration | ✅ Done (migration 0001 + five follow-ups; see `supabase/migrations/`) |
 | Vercel project hookup + env vars | **Deferred to Phase 8** (not blocking dev work) |
 
 **Connectivity check after env changes:**
@@ -74,7 +74,7 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 
 - **Register as a publisher** at [fuelpricesqld.com.au](https://www.fuelpricesqld.com.au) (one-time; Justin to do). Accept the publisher LUL; receive a security token by email; paste into `.env.local` as `QLD_FUEL_API_TOKEN`. API spec saved at `docs/external/qld_fuel_api_swagger.json`. Full obligations breakdown lives in CLAUDE.md "Legal hygiene → Publisher licence (QLD LUL) obligations".
 - **Schema** — `sites`, `price_snapshots`, `forecasts`, `daily_narrative`. RLS enabled on all tables with anon SELECT policies; writes only via service_role. Under the aggregate-only pivot, `sites` is internal-only (used to filter aggregates) and not displayed. Vestigial reference tables (`fuels`, `brands`, `geo_regions`) from migration 0001 were dropped in migration 0003 — they weren't needed by any MVP query or current backlog feature; re-create by migration if a future need emerges.
-- **Historical backfill** (one-time): import the QLD open-data CSV (CC BY 4.0) from [data.qld.gov.au/dataset/fuel-price-reporting-2026](https://www.data.qld.gov.au/dataset/fuel-price-reporting-2026) into `price_snapshots` so the chart works from day 1. CSV currently has Jan + Feb 2026; updates monthly.
+- **Historical backfill** (one-time): import the QLD open-data CSV (CC BY 4.0) from [data.qld.gov.au/dataset/fuel-price-reporting-2026](https://www.data.qld.gov.au/dataset/fuel-price-reporting-2026) into `price_snapshots` so the chart works from day 1. CSV currently has Jan + Feb 2026; updates monthly. **Run via `npm run backfill:csv` — already executed once on 2026-05-22 (Jan + Feb 2026 imported: 1,642 sites, 97,230 price events, 22,488 of them `Unleaded`). Re-run when new monthly CSVs land at data.qld.gov.au; the script is idempotent.**
 - **30-min cron via GitHub Actions** (free for public repos — keeps Vercel Hobby tier clean and satisfies LUL 2.3): hit `/Price/GetSitesPrices` every 30 min, compute Brisbane-wide aggregate, upsert into `price_snapshots`. Refresh `sites` (denormalised brand/suburb/state) weekly. Regenerate `daily_narrative` and `forecasts` once per day. Brisbane Metro `geoRegionLevel`/`geoRegionId` for the API filter lives in a constants file once discovered.
 - Python notebook `/analysis/brisbane_cycle.ipynb`:
   - Pull max historical data (backfilled CC BY CSVs + live snapshots)
@@ -93,46 +93,40 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 
 ### Phase 3 — Static UI
 
-- Chart component (Recharts) — single Brisbane aggregate line with historical + forecast + (stretch) uncertainty bands
-- Static cycle education copy under chart
-- Daily narrative line below chart
-- Privacy/trust pane placed near agent input
-- **`/about/data` page** carrying the verbatim QLD attribution notices (LUL clauses 4.2 + 4.3), with the year templated to current. Linked from the footer.
-- **Maintenance / kill-switch page** for staleness or `BBB_PUBLIC=false` — see Phase 5
+- ✅ Chart component (Recharts) — single Brisbane aggregate line with historical + forecast + uncertainty band slot. History window anchors to the most-recent observed event so the carry-forward function doesn't paint a flat tail when the live cron isn't running.
+- ✅ Static cycle education copy under chart
+- ✅ Daily narrative line below chart — reads `daily_narrative` table with a fallback string until the daily generator lands (Phase 2)
+- ✅ Privacy/trust pane placed near agent input
+- ✅ **`/about/data` page** carrying the verbatim QLD attribution notices (LUL clauses 4.2 + 4.3). Linked from the footer.
+- ✅ **Maintenance / kill-switch page** for staleness or `BBB_PUBLIC=false` — see Phase 5
 - ~~Station list with postcode input + per-row exclude control~~ — cut from MVP (see CLAUDE.md "Section 2 — cut from MVP")
 
 ### Phase 4 — Agent layer
 
-- API route using Vercel AI SDK v6 + `@ai-sdk/anthropic`
-- Two tools: `get_forecast`, `get_recent_history` (see CLAUDE.md). `get_today_spread` was dropped along with Section 2.
-- System prompt encoding:
-  - Brisbane cycle context (with measured figures, not stylised)
-  - Agent role (personalised fuel strategist, not free-roaming chatbot)
-  - Chip-cell awareness, including C-cell road-trip variant detection
-  - Educational nudges for cycle-unfamiliar users
-  - **Defamation-aware language constraints** (see CLAUDE.md "Legal hygiene → Language about retailers and pricing"). Encode the safe-list / avoid-list, the prohibition on characterising retailer behaviour as wrongdoing, the prohibition on naming retailers in negative framing, the prohibition on guaranteeing savings figures, and the graceful-decline behaviour if a user tries to steer the agent into accusatory framing.
-  - **Results-first interaction shape** (see CLAUDE.md "Agent → Interaction shape"). Agent produces a strategy on the first turn after chip pick, names assumptions, offers refinement. Never leads with an interview.
-- Streaming response to UI with visible tool calls
-- Plan output cached per `(situation_hash, day)` in Supabase
-- **Chip copy finalised** — 4 chips, tone polished
+- ✅ API route at `src/app/api/agent/route.ts` using Vercel AI SDK v6 + `@ai-sdk/anthropic` (Sonnet 4.6). Returns 503 with a clear message when `ANTHROPIC_API_KEY` is unset.
+- ✅ Two tools: `get_forecast`, `get_recent_history`. `get_today_spread` was dropped along with Section 2. `get_forecast` returns `status: "unavailable"` until the forecasts table is populated.
+- ✅ System prompt at `src/lib/agent/system-prompt.ts` encoding cycle context, role, chip-cell awareness (incl. C-cell road-trip variant), educational nudges, defamation-aware language constraints, and results-first interaction shape. **Cycle figures still qualitative pending Phase 2 measured values.**
+- ✅ Streaming response with visible tool calls — minimal chat UI at `src/components/AgentChat.tsx` (textbox + message list + tool-call inline marker)
+- ⏳ Plan output cached per `(situation_hash, day)` in Supabase — needs a small migration; deferred until after first end-to-end agent smoke test
+- ⏳ **Chip selector UI + copy/tone polish** — 4 chips in a 2×2 quadrant grid (flexibility × frequency). Structure locked in CLAUDE.md and SYSTEM_PROMPT; copy/tone is the open polish item
 
 ### Phase 5 — Cost protection + operational off-switch (build all)
 
 Cost protection:
-- `ANTHROPIC_API_KEY` as Vercel env var only — never in repo, client, or logs
-- Hard daily spend cap set manually in Anthropic console
-- Per-IP rate limit via Upstash Redis
-- Aggressive caching of repeatable queries
-- `CRON_SECRET` for cron endpoint protection
-- Max tokens cap on every Anthropic call
-- Max agent iterations cap (prevent infinite tool-call loops)
-- Strict input validation (length limits, allowed values)
-- Code-level BYO-key scaffolding (header override, no UI exposure)
+- ⏳ `ANTHROPIC_API_KEY` as Vercel env var only — never in repo, client, or logs (Phase 8 when Vercel hookup lands; local `.env.local` is the dev path)
+- ⏳ Hard daily spend cap set manually in Anthropic console
+- ⏳ Per-IP rate limit via Upstash Redis
+- ⏳ Aggressive caching of repeatable queries — partially landed (`unstable_cache` on freshness + aggregates + narrative); agent plan caching pending under Phase 4
+- ⏳ `CRON_SECRET` for cron endpoint protection
+- ✅ Max tokens cap on every Anthropic call (1500 in `src/app/api/agent/route.ts`)
+- ✅ Max agent iterations cap (6 steps via `stopWhen: stepCountIs(6)`)
+- ✅ Strict input validation in the agent route — 20-message cap, 16k-char total cap, JSON parse guard
+- ⏳ Code-level BYO-key scaffolding (header override, no UI exposure)
 
 Operational off-switch (see CLAUDE.md "Operational hygiene"):
-- **Staleness check on render** — every page reads the latest `price_snapshots.ingested_at`; if older than 60 min, render a "Data temporarily unavailable" page instead of chart/agent. Auto-degradation when cron fails.
-- **`BBB_PUBLIC` env var kill switch** — when unset, whole app renders "currently paused" page. Flip in Vercel dashboard for instant takedown.
-- **Server-side aggregate usage counts** — per LUL clause 4.8. Monthly distinct IPs + IP-region lookup, no cookies, no client-side tracking. Stored in a `usage_aggregates` table (small monthly rows). Privacy/trust pane stays literally true.
+- ✅ **Staleness check on render** — every page reads the latest `price_snapshots.ingested_at`; if older than 60 min, render a "Data temporarily unavailable" page instead of chart/agent. Auto-degradation when cron fails.
+- ✅ **`BBB_PUBLIC` env var kill switch** — when unset, whole app renders "currently paused" page. Flip in Vercel dashboard for instant takedown.
+- ⏳ **Server-side aggregate usage counts** — per LUL clause 4.8. Monthly distinct IPs + IP-region lookup, no cookies, no client-side tracking. Stored in a `usage_aggregates` table (small monthly rows). Privacy/trust pane stays literally true.
 
 ### Phase 6 — Abuse audit (mandatory before deploy)
 
@@ -181,6 +175,22 @@ Add more vectors as discovered. Document each defence. Confirm before deploy.
 - Confirm deploy URL and GitHub repo URL
 - 2-line summary for use elsewhere
 - If `fuel_app_brief.md` somehow still exists in the working directory, add to `.gitignore` (or delete) before first commit
+
+---
+
+## Likely next-session entry points
+
+When picking up cold, the most useful chunks to consider — roughly ordered by visible payoff per effort:
+
+1. **Smoke-test the agent end-to-end.** Drop `ANTHROPIC_API_KEY` into `.env.local`, run `npm run dev`, open `/`, talk to the planner. Verify streaming + visible tool calls + the language-constraint behaviour (try an accusatory prompt and confirm the graceful redirect). No code required; this is just the first time the agent runs against real Claude. Once done, decide whether to add plan caching (entry 3 below) before the chip UI.
+2. **Phase 4 chip selector UI + copy polish.** 2×2 quadrant grid (flexibility × frequency); each chip sends a marker (e.g. `chip:A`) plus default-assumption context into the agent's first turn. Structure locked in CLAUDE.md and SYSTEM_PROMPT; the open work is the visual grid and the chip copy/tone. ~45–60 min; copy/tone is taste-led.
+3. **Phase 4 plan caching by `(situation_hash, day)`.** Migration adds an `agent_plans` table; route hashes the input situation pre-stream, returns cached output if hit, writes after stream completes. ~45 min, autonomous; defer until after entry 1 since blind streaming + caching is awkward to get right without a working agent to verify against.
+4. **Phase 2 chunk 2 — notebook deep-dive with Justin.** The CSV-backfilled data is in Supabase and the `brisbane_daily_avg_u91` aggregate function is in place. Create `/analysis/brisbane_cycle.ipynb`, characterise the cycle empirically. **Pause for Justin** at methodology decisions (trough detection, outlier rules, parameter list). Output: `/analysis/output/cycle_params.json`.
+5. **Phase 2 chunk 3 — TS forecast projection.** Reads `cycle_params.json`, writes `forecasts` table. Depends on chunk 4. Once it runs, the chart picks up the dashed forecast line + uncertainty band automatically (already wired) and the agent's `get_forecast` tool starts returning real data.
+6. **Phase 5 cost protection layers** — per-IP rate limit via Upstash Redis, `CRON_SECRET`, BYO-key header, `usage_aggregates` table. Off-switch + per-call caps already landed; this is the remaining defensive surface. Mostly autonomous.
+7. **Phase 2 chunk 1.5 — live 30-min cron.** GitHub Actions workflow hitting `/Price/GetSitesPrices`, computing the Brisbane aggregate, upserting into `price_snapshots`. **Blocked on the QLD publisher token.** Once unblocked, the chart's dead-zone trim naturally lapses and the page shows current data.
+
+Open external blocker: **publisher API token from QLD** (registration submitted; awaiting). Only blocks entry 7 above (live cron) and the deploy verification in Phase 8. Everything else above is unblocked.
 
 ---
 
