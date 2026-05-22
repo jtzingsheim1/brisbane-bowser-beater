@@ -1,3 +1,4 @@
+import AgentChat from "@/components/AgentChat";
 import CycleEducation from "@/components/CycleEducation";
 import DailyNarrative from "@/components/DailyNarrative";
 import PriceChart from "@/components/PriceChart";
@@ -42,11 +43,14 @@ export default async function Home() {
           Personal fuel strategy planner
         </h2>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          A short AI-powered planner that turns the cycle into a fill-day plan
-          for your situation. Coming online soon.
+          Describe your situation and the planner will turn the cycle into a
+          fill-day plan.
         </p>
         <div className="mt-4">
           <PrivacyTrustPane />
+        </div>
+        <div className="mt-4">
+          <AgentChat />
         </div>
       </section>
     </main>
