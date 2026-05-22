@@ -12,7 +12,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations 0001–0006 auto-applying on merge; Vercel hookup deferred to Phase 8) |
 | Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema, CSV backfill, and the `brisbane_daily_avg_u91` aggregate function landed; live 30-min cron, notebook, and TS projection still pending) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
-| Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI shipped; chip selector + copy/tone polish and plan caching pending) |
+| Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI, and 2×2 starter chip grid all shipped; chip copy/tone polish and plan caching still open) |
 | Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
 | Phase 6 — Abuse audit | Pending |
 | Phase 7 — Public docs | Pending |
@@ -106,9 +106,9 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 - ✅ API route at `src/app/api/agent/route.ts` using Vercel AI SDK v6 + `@ai-sdk/anthropic` (Sonnet 4.6). Returns 503 with a clear message when `ANTHROPIC_API_KEY` is unset.
 - ✅ Two tools: `get_forecast`, `get_recent_history`. `get_today_spread` was dropped along with Section 2. `get_forecast` returns `status: "unavailable"` until the forecasts table is populated.
 - ✅ System prompt at `src/lib/agent/system-prompt.ts` encoding cycle context, role, chip-cell awareness (incl. C-cell road-trip variant), educational nudges, defamation-aware language constraints, and results-first interaction shape. **Cycle figures still qualitative pending Phase 2 measured values.**
-- ✅ Streaming response with visible tool calls — minimal chat UI at `src/components/AgentChat.tsx` (textbox + message list + tool-call inline marker)
+- ✅ Streaming response with visible tool calls — chat UI at `src/components/AgentChat.tsx` (2×2 starter chip grid + textbox + message list + inline tool-call markers)
+- ✅ **Starter chip grid** — 4 chips in a 2×2 quadrant (flexibility × frequency). Each chip clicks into a conversational kick-off message that identifies the cell (A/B/C/D). Chips hide after the first message. **Open polish item**: chip copy/tone — edit the `CHIPS` array at the top of `AgentChat.tsx`.
 - ⏳ Plan output cached per `(situation_hash, day)` in Supabase — needs a small migration; deferred until after first end-to-end agent smoke test
-- ⏳ **Chip selector UI + copy/tone polish** — 4 chips in a 2×2 quadrant grid (flexibility × frequency). Structure locked in CLAUDE.md and SYSTEM_PROMPT; copy/tone is the open polish item
 
 ### Phase 5 — Cost protection + operational off-switch (build all)
 
@@ -182,8 +182,8 @@ Add more vectors as discovered. Document each defence. Confirm before deploy.
 
 When picking up cold, the most useful chunks to consider — roughly ordered by visible payoff per effort:
 
-1. **Smoke-test the agent end-to-end.** Drop `ANTHROPIC_API_KEY` into `.env.local`, run `npm run dev`, open `/`, talk to the planner. Verify streaming + visible tool calls + the language-constraint behaviour (try an accusatory prompt and confirm the graceful redirect). No code required; this is just the first time the agent runs against real Claude. Once done, decide whether to add plan caching (entry 3 below) before the chip UI.
-2. **Phase 4 chip selector UI + copy polish.** 2×2 quadrant grid (flexibility × frequency); each chip sends a marker (e.g. `chip:A`) plus default-assumption context into the agent's first turn. Structure locked in CLAUDE.md and SYSTEM_PROMPT; the open work is the visual grid and the chip copy/tone. ~45–60 min; copy/tone is taste-led.
+1. **Smoke-test the agent end-to-end.** Drop `ANTHROPIC_API_KEY` into `.env.local`, run `npm run dev`, open `/`, pick a chip or describe a situation. Verify streaming + visible tool calls + the language-constraint behaviour (try an accusatory prompt and confirm the graceful redirect). If `ingested_at` is older than 60 min, re-run `npm run backfill:csv` first to push freshness back inside the staleness window. No code required.
+2. **Polish chip copy/tone.** First-cut copy is in `CHIPS` at the top of `src/components/AgentChat.tsx`. Each chip has a `label`, `hint`, and `kickoff` message — open work is purely wording. Worth doing after the smoke-test so you can feel how each chip lands in conversation.
 3. **Phase 4 plan caching by `(situation_hash, day)`.** Migration adds an `agent_plans` table; route hashes the input situation pre-stream, returns cached output if hit, writes after stream completes. ~45 min, autonomous; defer until after entry 1 since blind streaming + caching is awkward to get right without a working agent to verify against.
 4. **Phase 2 chunk 2 — notebook deep-dive with Justin.** The CSV-backfilled data is in Supabase and the `brisbane_daily_avg_u91` aggregate function is in place. Create `/analysis/brisbane_cycle.ipynb`, characterise the cycle empirically. **Pause for Justin** at methodology decisions (trough detection, outlier rules, parameter list). Output: `/analysis/output/cycle_params.json`.
 5. **Phase 2 chunk 3 — TS forecast projection.** Reads `cycle_params.json`, writes `forecasts` table. Depends on chunk 4. Once it runs, the chart picks up the dashed forecast line + uncertainty band automatically (already wired) and the agent's `get_forecast` tool starts returning real data.
