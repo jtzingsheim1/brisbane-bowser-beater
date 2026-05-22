@@ -49,10 +49,44 @@ const getCachedDailyU91 = unstable_cache(
   { revalidate: CACHE_TTL_SECONDS },
 );
 
+async function fetchLatestEventDate(): Promise<Date | null> {
+  const client = supabaseReadOnly();
+  const { data, error } = await client
+    .from("price_snapshots")
+    .select("transaction_date_utc")
+    .eq("fuel_name", "Unleaded")
+    .order("transaction_date_utc", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  if (!data?.transaction_date_utc) {
+    return null;
+  }
+  return new Date(data.transaction_date_utc as string);
+}
+
+const getCachedLatestEventIso = unstable_cache(
+  async (): Promise<string | null> => {
+    const d = await fetchLatestEventDate();
+    return d ? d.toISOString() : null;
+  },
+  ["aggregates:latest-event-date"],
+  { revalidate: CACHE_TTL_SECONDS },
+);
+
+// Anchors the chart window to the most recent real event rather than `now()`.
+// While we're between backfill and live-cron data, the latest event is from
+// Feb 2026 — without this, the chart would carry-forward a flat line for
+// weeks. Once the live cron starts, latest-event is ~now and behaviour
+// reverts to the natural "last N days from today" window.
 export async function getBrisbaneDailyU91History(
   days: number = 60,
 ): Promise<DailyPoint[]> {
-  const end = new Date();
+  const latestIso = await getCachedLatestEventIso();
+  const end = latestIso ? new Date(latestIso) : new Date();
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - days);
   return getCachedDailyU91(toIsoDate(start), toIsoDate(end));
