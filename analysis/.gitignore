@@ -1,0 +1,15 @@
+# Python venv — local only, recreate from requirements.txt
+.venv/
+
+# Raw QLD CSV cache — large, re-downloadable from data.qld.gov.au.
+# Not the contract; cycle_params.json under output/ is what's committed.
+data/
+
+# Exploratory plots — regenerable from the scripts. The committed artifact
+# is output/cycle_params.json (the Python<->TS contract), kept below.
+output/*.png
+
+# Notebook checkpoints / caches
+.ipynb_checkpoints/
+__pycache__/
+*.pyc

@@ -10,7 +10,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 |---|---|
 | Phase 0 — Discovery | ✅ Complete |
 | Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations 0001–0006 auto-applying on merge; Vercel hookup deferred to Phase 8) |
-| Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema, CSV backfill, and the `brisbane_daily_avg_u91` aggregate function landed; live 30-min cron, notebook, and TS projection still pending) |
+| Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, and cycle characterisation → `cycle_params.json` all landed; TS projection, CLAUDE.md figure adoption, and live 30-min cron still pending) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
 | Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI, and 2×2 starter chip grid all shipped; chip copy/tone polish and plan caching still open) |
 | Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
@@ -34,7 +34,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Chart library | Recharts |
 | Forecast model architecture | 3-stage: one-time Python characterisation → daily TS projection → occasional re-fit |
 | Uncertainty bands | Bootstrap from historical variance; fall back to point-only if implementation gets fiddly |
-| Analysis language | Python (Jupyter notebook in `/analysis/`); production stays TypeScript |
+| Analysis language | Python scripts in `/analysis/` (own venv; notebook rejected — poor git diffs); production stays TypeScript |
 | Brief lifecycle | Retired — was kickoff context, not a living doc. Captured into CLAUDE.md, PLAN.md, and project memory before deletion. |
 
 **Open task carried into implementation**: chip copy tone polish. Structure is locked, wording is decided at Phase 4.
@@ -70,25 +70,27 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 
 > **Expect a collaborative deep-dive here.** Justin has flagged interest in nerding out on the forecast model design together. Don't speed through this phase — pause for interactive discussion at: (a) raw data shape findings, (b) cycle parameterisation method choice, (c) outlier exclusion rules, (d) projection algorithm. Methods follow what the data reveals; no method choices locked in advance.
 
-> **Phase 2 is the biggest phase** — break execution into chunks rather than trying to land it in one stretch. Natural chunks: (1) ingestion pipeline + cron + Supabase schema, (2) Python notebook data exploration, (3) cycle characterisation + `cycle_params.json` output, (4) TS daily projection writing to `forecasts` table, (5) update CLAUDE.md cycle figures from measured values. Each is a sensible commit/checkpoint.
+> **Phase 2 is the biggest phase** — break execution into chunks rather than trying to land it in one stretch. Chunks: (1) ingestion pipeline + cron + Supabase schema [schema + CSV backfill ✅; live cron pending], (2) Python data exploration ✅, (3) cycle characterisation + `cycle_params.json` output ✅, (4) TS daily projection writing to `forecasts` table [next], (5) adopt measured cycle figures into UI/agent copy [CLAUDE.md cycle section updated; user-facing copy pending]. Each is a sensible commit/checkpoint.
+>
+> **Checkpoint decisions taken (chunks 2–3):** detrend via centered rolling median (55d); trough/peak detection via `scipy.find_peaks` (prominence $0.08, distance 18d); cycles trough-to-trough; outlier rule = exclude period > 55d (missed-trough merges); **shape + period recency-weighted (12-month half-life), amplitude equal-weighted** — chosen after a per-cycle trend test showed real but modest drift (shortening period, steepening decline; stable amplitude) rather than the amplitude change a normalised-shape plot first suggested.
 
 - **Register as a publisher** at [fuelpricesqld.com.au](https://www.fuelpricesqld.com.au) (one-time; Justin to do). Accept the publisher LUL; receive a security token by email; paste into `.env.local` as `QLD_FUEL_API_TOKEN`. API spec saved at `docs/external/qld_fuel_api_swagger.json`. Full obligations breakdown lives in CLAUDE.md "Legal hygiene → Publisher licence (QLD LUL) obligations".
 - **Schema** — `sites`, `price_snapshots`, `forecasts`, `daily_narrative`. RLS enabled on all tables with anon SELECT policies; writes only via service_role. Under the aggregate-only pivot, `sites` is internal-only (used to filter aggregates) and not displayed. Vestigial reference tables (`fuels`, `brands`, `geo_regions`) from migration 0001 were dropped in migration 0003 — they weren't needed by any MVP query or current backlog feature; re-create by migration if a future need emerges.
 - **Historical backfill** (one-time): import the QLD open-data CSV (CC BY 4.0) from [data.qld.gov.au/dataset/fuel-price-reporting-2026](https://www.data.qld.gov.au/dataset/fuel-price-reporting-2026) into `price_snapshots` so the chart works from day 1. CSV currently has Jan + Feb 2026; updates monthly. **Run via `npm run backfill:csv` — already executed once on 2026-05-22 (Jan + Feb 2026 imported: 1,642 sites, 97,230 price events, 22,488 of them `Unleaded`). Re-run when new monthly CSVs land at data.qld.gov.au; the script is idempotent.**
 - **30-min cron via GitHub Actions** (free for public repos — keeps Vercel Hobby tier clean and satisfies LUL 2.3): hit `/Price/GetSitesPrices` every 30 min, compute Brisbane-wide aggregate, upsert into `price_snapshots`. Refresh `sites` (denormalised brand/suburb/state) weekly. Regenerate `daily_narrative` and `forecasts` once per day. Brisbane Metro `geoRegionLevel`/`geoRegionId` for the API filter lives in a constants file once discovered.
-- Python notebook `/analysis/brisbane_cycle.ipynb`:
-  - Pull max historical data (backfilled CC BY CSVs + live snapshots)
-  - Visualise raw series; characterise actual cycle shape empirically
-  - Detect troughs/peaks
-  - Parameterise: period, asymmetry (peak-to-trough vs trough-to-peak days), amplitude, peak duration
-  - Robust statistics (median + MAD) for parameters; exclude outlier cycles (likely COVID, March 2022 fuel excise cut, anything outside ~2 MAD)
-  - Output: `/analysis/output/cycle_params.json` + a normalised cycle shape template
-- TS daily projection (`/lib/forecast/`):
+- ✅ **Python scripts `/analysis/*.py`** (own venv; pulls CSVs offline, not via Supabase — deep history doesn't belong in the production DB):
+  - `download_data.py` caches ~35 months of QLD CSVs (2023–2026) via the CKAN API
+  - `cycle_lib.py` builds the Brisbane core-Metro U91 carry-forward daily series, matching the production aggregate exactly
+  - `cycle_fit.py` detrends, detects troughs/peaks, parameterises, builds the canonical shape + by-year cross-check
+  - `trend_check.py` regresses per-cycle metrics vs time (drift test)
+  - `build_params.py` recency-weighted finalisation → `output/cycle_params.json` + model-vs-history overlay
+  - **Measured**: period ~39d, swing ~$0.35, peak ~38% into cycle; shape-fit RMS ~17% of swing. Exploratory PNGs gitignored; `cycle_params.json` committed.
+- ⏳ TS daily projection (`/lib/forecast/`) — **chunk 4, next**:
   - Reads `cycle_params.json`
   - Detects current cycle position from most recent observed Brisbane aggregate
   - Projects ~30 days forward applying canonical shape, anchored at pivot
   - Writes `forecasts` table in Supabase
-- **Update `CLAUDE.md` cycle figures** (period, swing, asymmetry) with measured values once observed
+- ⏳ **Adopt measured cycle figures into user-facing UI / agent copy** (chunk 5). CLAUDE.md cycle section already updated with the verified, observation-only numbers; propagating into chart copy + agent system prompt is the remaining step, under the same language discipline.
 - Default daily narrative line generated daily, cached for the day
 
 ### Phase 3 — Static UI
@@ -185,8 +187,8 @@ When picking up cold, the most useful chunks to consider — roughly ordered by 
 1. **Smoke-test the agent end-to-end.** Drop `ANTHROPIC_API_KEY` into `.env.local`, run `npm run dev`, open `/`, pick a chip or describe a situation. Verify streaming + visible tool calls + the language-constraint behaviour (try an accusatory prompt and confirm the graceful redirect). If `ingested_at` is older than 60 min, re-run `npm run backfill:csv` first to push freshness back inside the staleness window. No code required.
 2. **Polish chip copy/tone.** First-cut copy is in `CHIPS` at the top of `src/components/AgentChat.tsx`. Each chip has a `label`, `hint`, and `kickoff` message — open work is purely wording. Worth doing after the smoke-test so you can feel how each chip lands in conversation.
 3. **Phase 4 plan caching by `(situation_hash, day)`.** Migration adds an `agent_plans` table; route hashes the input situation pre-stream, returns cached output if hit, writes after stream completes. ~45 min, autonomous; defer until after entry 1 since blind streaming + caching is awkward to get right without a working agent to verify against.
-4. **Phase 2 chunk 2 — notebook deep-dive with Justin.** The CSV-backfilled data is in Supabase and the `brisbane_daily_avg_u91` aggregate function is in place. Create `/analysis/brisbane_cycle.ipynb`, characterise the cycle empirically. **Pause for Justin** at methodology decisions (trough detection, outlier rules, parameter list). Output: `/analysis/output/cycle_params.json`.
-5. **Phase 2 chunk 3 — TS forecast projection.** Reads `cycle_params.json`, writes `forecasts` table. Depends on chunk 4. Once it runs, the chart picks up the dashed forecast line + uncertainty band automatically (already wired) and the agent's `get_forecast` tool starts returning real data.
+4. **Phase 2 chunk 4 — TS forecast projection.** Reads `analysis/output/cycle_params.json`, anchors the canonical shape to the latest observed Brisbane aggregate, projects ~30 days, writes the `forecasts` table. Once it runs, the chart picks up the dashed forecast line + uncertainty band automatically (already wired) and the agent's `get_forecast` tool starts returning real data. **(Chunk 2 — data exploration — and chunk 3 — characterisation + `cycle_params.json` — are ✅ done.)**
+5. **Phase 2 chunk 5 — adopt measured figures into UI/agent copy.** CLAUDE.md already carries the verified numbers (period ~39d, swing ~$0.35, peak ~38% in). Propagate into chart copy + agent system prompt, observation-only.
 6. **Phase 5 cost protection layers** — per-IP rate limit via Upstash Redis, `CRON_SECRET`, BYO-key header, `usage_aggregates` table. Off-switch + per-call caps already landed; this is the remaining defensive surface. Mostly autonomous.
 7. **Phase 2 chunk 1.5 — live 30-min cron.** GitHub Actions workflow hitting `/Price/GetSitesPrices`, computing the Brisbane aggregate, upserting into `price_snapshots`. **Blocked on the QLD publisher token.** Once unblocked, the chart's dead-zone trim naturally lapses and the page shows current data.
 

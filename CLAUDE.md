@@ -8,13 +8,20 @@ A single-page web app for Brisbane drivers, combining live fuel price data with 
 
 Australian retail fuel prices in major capital cities exhibit recurring cycles that have been studied by the ACCC, which publishes regular [fuel and petrol monitoring reports](https://www.accc.gov.au/by-industry/petrol-and-fuel/fuel-and-petrol-monitoring). The cycles are not closely correlated with wholesale price movements. The specific characteristics of the **current** Brisbane cycle — period, amplitude, asymmetry, shape, regularity, typical station spread — are what this project's Phase 2 characterisation measures from QLD Fuel Price Reporting API data.
 
-**No quantitative claims here until Phase 2 lands.** This section is deliberately qualitative. After Phase 2 produces a measured characterisation, this section gets updated with verified numbers, and the user-facing UI / agent narratives can adopt them.
+**Measured characterisation (Phase 2, landed 2026-05).** The offline Python pipeline in `/analysis/` characterised the cycle from ~35 months of QLD open-data CSVs (2023-03 → 2026-02, Brisbane core-Metro U91, 20 cycles after excluding 64d+ merges). Observation-only figures, now the source of truth in `analysis/output/cycle_params.json`:
+
+- **Cycle length** ~39 days (recency-weighted; inter-cycle range ~31–46).
+- **Swing** ~$0.35/L trough-to-peak, stable across all three years.
+- **Shape** asymmetric — the climb to the peak occupies ~38% of the cycle, the easing-back ~62% (prices rise faster than they come down).
+- **Observed drift 2023→2025**: cycle length has been shortening (~3 d/yr), the easing-back phase has steepened (statistically significant), swing size unchanged. Recorded in `cycle_params.json` `drift_notes`; re-fit quarterly.
+
+These numbers are measured facts about the *price series*, framed as observations of the cycle — not characterisations of retailer conduct (see Legal hygiene). **Adoption into user-facing UI / agent narratives is Phase 2 chunk 5** (still pending) and must carry the same language discipline.
 
 **Equally important — language discipline (defamation-aware).** See "Legal hygiene → Language about retailers and pricing" below. The cycle is an observation; the project does not characterise retailer behaviour as wrongdoing, and language across all surfaces must respect that. Australian defamation law is plaintiff-friendly and well-resourced retail fuel companies would not respond favourably to a tool that frames their behaviour as wrongdoing.
 
 In the interim (and ongoing):
-- Public-facing UI and the agent describe the cycle in **qualitative AND observation-only terms** (e.g., *"Brisbane prices move in recurring cycles; we forecast where they're going"*) — no causal characterisation of retailer behaviour.
-- Avoid specific period, swing, or comparison claims until they're measured.
+- Public-facing UI and the agent describe the cycle in **observation-only terms** (e.g., *"Brisbane prices move in recurring cycles; we forecast where they're going"*) — no causal characterisation of retailer behaviour.
+- The measured figures above may now be cited (they're observations of the price series), but always as estimates/observations, never as guarantees or as claims about why retailers price as they do. Chunk 5 wires them into UI/agent copy deliberately.
 - The chart itself implicitly shows the magnitudes once it's populated — let the data speak.
 
 **Tone**: confident and useful, with light humour where it lands, never preachy. **Avoid editorialising** about the cycle or about retailer behaviour — the safe-list / avoid-list in the Legal hygiene section governs language across every surface in this project.
@@ -136,7 +143,7 @@ Concrete, dated, with reasoning. Example:
 | LLM | Anthropic Claude API (direct, via `@ai-sdk/anthropic`) |
 | Rate limiting | Upstash Redis (Vercel marketplace free tier) |
 | Charting | Recharts |
-| Cycle analysis (one-time, offline) | Python (Jupyter notebook in `/analysis/`) |
+| Cycle analysis (one-time, offline) | Python scripts in `/analysis/` (own venv; no notebook) |
 | Data source | QLD Fuel Price Reporting API. Registration required as a **publisher** (their term for any app that displays prices to motorists) at fuelpricesqld.com.au; security token by email. Subject to the publisher licence + any attribution rules. For end users of this app, no account / auth is ever required. |
 
 ---
@@ -147,11 +154,11 @@ Split into three stages:
 
 | Stage | Where | What |
 |---|---|---|
-| **1. Cycle characterisation** (one-time) | Python notebook in `/analysis/` | Pull max historical data → detect troughs/peaks → parameterise cycle (period, asymmetry, amplitude) → exclude outlier cycles → output `cycle_params.json` |
+| **1. Cycle characterisation** (one-time) | Python scripts in `/analysis/` | Pull max historical data → detect troughs/peaks → parameterise cycle (period, asymmetry, amplitude) → exclude outlier cycles → output `cycle_params.json` ✅ landed 2026-05 |
 | **2. Daily projection** | TS, runs after each ingestion (30-min cadence; projection itself only needs to run once a day) | Read `cycle_params.json` → anchor canonical shape to most recent observed Brisbane aggregate → project ~30 days forward → write `forecasts` table |
 | **3. Occasional re-fit** (~quarterly) | Manual rerun of Stage 1 | Refresh parameters, document drift |
 
-**Empirical, not prescribed.** Specific peak-detection algorithm, outlier thresholds, parameter list, and shape representation get chosen inside the notebook based on what the data actually shows. Cycle shape (sawtooth, sinusoidal, hybrid) is an empirical question — the production code is shape-agnostic by using the characterised template, not a hardcoded functional form.
+**Empirical, not prescribed.** Specific peak-detection algorithm, outlier thresholds, parameter list, and shape representation get chosen inside the analysis scripts based on what the data actually shows. Cycle shape (sawtooth, sinusoidal, hybrid) is an empirical question — the production code is shape-agnostic by using the characterised template, not a hardcoded functional form.
 
 ### Forecast uncertainty bands
 
@@ -165,7 +172,7 @@ Long-form methodology lives in README "How the forecast works" section (Phase 7)
 
 ### Repo boundary
 
-- `/analysis/brisbane_cycle.ipynb` — Python notebook, exploratory
+- `/analysis/*.py` — Python scripts (own venv), exploratory but version-control-friendly: `download_data.py` (cache QLD CSVs), `cycle_lib.py` (load + daily series), `cycle_fit.py` (detrend/detect/canonical), `trend_check.py` (drift test), `build_params.py` (finalise). No notebook — deliberate (clean git diffs).
 - `/analysis/output/cycle_params.json` — committed artifact, the contract between Python and TS
 - `/lib/forecast/` — TS production code, reads the JSON, knows nothing about Python
 - Vercel runtime is pure TS — Python never runs on the server
@@ -302,7 +309,7 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 
 Most conventions inherit from the global standards. Project-specific notes:
 
-- `cycle_params.json` is the contract between the Python notebook and TS production code. Versioned in git. Schema documented in the notebook and `/lib/forecast/types.ts`.
+- `cycle_params.json` is the contract between the Python analysis scripts and TS production code. Versioned in git. Schema documented inline in `analysis/build_params.py` (and mirrored in `/lib/forecast/types.ts` when chunk 4 lands).
 - Agent system prompt encodes the Brisbane cycle context AND chip-cell awareness (including the C-cell road-trip variant).
 - No PII written to Supabase. Caches keyed on hashes of inputs, not raw inputs.
 - Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `/lib/forecast/` is TS-only.
@@ -315,5 +322,5 @@ Most conventions inherit from the global standards. Project-specific notes:
 
 - **`PLAN.md`** — phase plan and current status
 - **`AGENTS.md`** — tool-rules file generated by `create-next-app`. Includes an important reminder: **Next.js 16 has breaking changes that may not match older training data**. Consult `node_modules/next/dist/docs/` or use context7 to look up current Next.js / React 19 / Tailwind v4 APIs rather than relying on memory.
-- **`/analysis/`** — Python notebook for cycle characterisation (created in Phase 2)
+- **`/analysis/`** — Python scripts for cycle characterisation (Phase 2; outputs `output/cycle_params.json`). See `analysis/requirements.txt`; run in its own venv.
 - **`README.md`** — public-facing documentation (created in Phase 7)
