@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python analysis pipeline — its own venv (.venv/) ships thousands of
+    // vendored JS files (jupyter et al.) that have nothing to do with our TS.
+    "analysis/**",
   ]),
 ]);
 
