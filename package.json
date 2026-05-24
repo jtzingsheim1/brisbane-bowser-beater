@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
-    "backfill:csv": "node --env-file=.env.local scripts/backfill-csv.mjs"
+    "backfill:csv": "node --env-file=.env.local scripts/backfill-csv.mjs",
+    "freshness:touch": "node --env-file=.env.local scripts/touch-freshness.mjs",
+    "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs && next dev"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.78",

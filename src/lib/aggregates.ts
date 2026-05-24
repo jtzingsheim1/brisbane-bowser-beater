@@ -92,11 +92,18 @@ export async function getBrisbaneDailyU91History(
   return getCachedDailyU91(toIsoDate(start), toIsoDate(end));
 }
 
+// The forecast grain written by the cron (see migration 0007). MVP is one fuel,
+// one region; filtering keeps the "latest batch" lookup correct if that grows.
+const FORECAST_FUEL_NAME = "Unleaded";
+const FORECAST_REGION = "brisbane_metro";
+
 async function fetchLatestForecast(): Promise<ForecastPoint[]> {
   const client = supabaseReadOnly();
   const { data: generated, error: genError } = await client
     .from("forecasts")
     .select("generated_at")
+    .eq("fuel_name", FORECAST_FUEL_NAME)
+    .eq("region", FORECAST_REGION)
     .order("generated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -111,6 +118,8 @@ async function fetchLatestForecast(): Promise<ForecastPoint[]> {
   const { data, error } = await client
     .from("forecasts")
     .select("forecast_for_date, predicted_price, band_low, band_high")
+    .eq("fuel_name", FORECAST_FUEL_NAME)
+    .eq("region", FORECAST_REGION)
     .eq("generated_at", generated.generated_at)
     .order("forecast_for_date", { ascending: true });
 
