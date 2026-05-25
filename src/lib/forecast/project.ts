@@ -24,6 +24,18 @@ const LEVEL_PIN_POINTS = 3;
 // have drifted (which would inflate the fitted swing). This matches the Python
 // pipeline's amplitude definition — a single cycle's raw peak-to-trough.
 const FIT_WINDOW_DAYS = 45;
+// Carry-forward dead-zone handling. When ingestion stalls — or before the live
+// feed has filled in history (the gap between the CSV backfill and go-live) —
+// the daily series goes perfectly flat: each station's last-known price carried
+// forward unchanged. Fitting the cycle against a flat stretch is meaningless,
+// so we trim it and fit only against the most-recent contiguous run of
+// genuinely-varying data. A run of DEADZONE_RUN_DAYS daily averages identical
+// within FLAT_EPS marks a dead zone; we need at least MIN_FIT_POINTS real days
+// after it to attempt a fit, else we decline to forecast (return null) rather
+// than emit a confidently-wrong line.
+const DEADZONE_RUN_DAYS = 7;
+const FLAT_EPS = 0.001; // $/L — daily averages within 0.1c are "identical"
+const MIN_FIT_POINTS = 7;
 
 export type ObservedPoint = { day: string; avgPrice: number };
 
@@ -89,6 +101,24 @@ function round3(x: number): number {
   return Math.round(x * 1000) / 1000;
 }
 
+// Drop everything up to and including the last dead-zone (flat carry-forward)
+// run, returning the most-recent contiguous stretch of varying data. `pts` must
+// be ascending by day. If the series ends inside a dead zone, returns an empty
+// array (the caller then declines to forecast).
+function trimDeadZone(pts: ObservedPoint[]): ObservedPoint[] {
+  let cutoff = 0;
+  let runLen = 1;
+  for (let i = 1; i < pts.length; i++) {
+    if (Math.abs(pts[i].avgPrice - pts[i - 1].avgPrice) <= FLAT_EPS) {
+      runLen++;
+      if (runLen >= DEADZONE_RUN_DAYS) cutoff = i + 1;
+    } else {
+      runLen = 1;
+    }
+  }
+  return pts.slice(cutoff);
+}
+
 /**
  * Project the Brisbane U91 daily average forward from observed history using
  * the characterised cycle template.
@@ -121,12 +151,17 @@ export function projectForecast(
   // Sort ascending and keep the most recent FIT_WINDOW_DAYS for anchoring.
   const sorted = [...history].sort((p, q) => (p.day < q.day ? -1 : 1));
   const anchorIdx = dayIndex(sorted[sorted.length - 1].day);
-  const window = sorted.filter(
+  const recentWindow = sorted.filter(
     (p) => anchorIdx - dayIndex(p.day) < FIT_WINDOW_DAYS,
   );
 
-  const offsets = window.map((p) => anchorIdx - dayIndex(p.day)); // days before anchor
-  const values = window.map((p) => p.avgPrice);
+  // Fit only against the most-recent run of genuinely-varying data, so a flat
+  // carry-forward dead zone in the window can't corrupt the phase/swing fit.
+  const fitPts = trimDeadZone(recentWindow);
+  if (fitPts.length < MIN_FIT_POINTS) return null;
+
+  const offsets = fitPts.map((p) => anchorIdx - dayIndex(p.day)); // days before anchor
+  const values = fitPts.map((p) => p.avgPrice);
 
   // Grid-search the phase at the anchor day.
   let best: { phi0: number; fit: LinFit } | null = null;

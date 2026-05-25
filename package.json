@@ -11,6 +11,7 @@
     "backfill:csv": "node --env-file=.env.local scripts/backfill-csv.mjs",
     "ingest:prices": "node --env-file=.env.local scripts/ingest-prices.mjs",
     "refresh:sites": "node --env-file=.env.local scripts/refresh-sites.mjs",
+    "forecast:generate": "node --env-file=.env.local --import tsx scripts/generate-forecast.ts",
     "freshness:touch": "node --env-file=.env.local scripts/touch-freshness.mjs",
     "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs && next dev"
   },
@@ -35,6 +36,7 @@
     "eslint-config-next": "16.2.6",
     "supabase": "^2.100.1",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }
