@@ -3,14 +3,20 @@ import { supabaseReadOnly } from "@/lib/supabase/server";
 
 const CACHE_TTL_SECONDS = 60 * 60;
 
+// Matches the grain written by the daily generator (see migration 0008).
+const NARRATIVE_FUEL_NAME = "Unleaded";
+const NARRATIVE_REGION = "brisbane_metro";
+
 const FALLBACK_NARRATIVE =
-  "Brisbane prices move in recurring cycles. The chart shows the current shape — daily narrative will land once the forecast model is in.";
+  "Brisbane prices move in recurring cycles. The chart shows where they're sitting now and where the forecast has them heading.";
 
 async function fetchTodayNarrative(): Promise<string | null> {
   const client = supabaseReadOnly();
   const { data, error } = await client
     .from("daily_narrative")
     .select("narrative_text, narrative_date")
+    .eq("fuel_name", NARRATIVE_FUEL_NAME)
+    .eq("region", NARRATIVE_REGION)
     .order("narrative_date", { ascending: false })
     .limit(1)
     .maybeSingle();

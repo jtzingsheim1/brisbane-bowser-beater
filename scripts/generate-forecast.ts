@@ -1,9 +1,10 @@
-// Daily Brisbane U91 forecast generation.
+// Daily Brisbane U91 forecast + narrative generation.
 //
 // Reuses the production projection (src/lib/forecast) so there is a single
 // source of truth shared with the Vercel route — this script just feeds it the
 // live Supabase aggregate (no Next.js layer) and writes a fresh batch into
-// `forecasts`. Runs once a day under GitHub Actions, after the price ingest.
+// `forecasts`, plus the matching daily narrative line into `daily_narrative`.
+// Runs once a day under GitHub Actions, after the price ingest.
 // Pre-deploy this is the only forecast generator; the Vercel route shares the
 // same lib, so they can't drift.
 //
@@ -12,6 +13,7 @@
 //   node --env-file=.env.local --import tsx scripts/generate-forecast.ts --dry  (prints only)
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildNarrative } from "../src/lib/forecast/narrative";
 import { getCycleParams } from "../src/lib/forecast/params";
 import {
   projectForecast,
@@ -62,8 +64,9 @@ async function main() {
   const dry = process.argv.includes("--dry");
   const client = supabaseAdmin();
 
+  const params = getCycleParams();
   const history = await loadHistory(client);
-  const result = projectForecast(getCycleParams(), history);
+  const result = projectForecast(params, history);
 
   if (!result) {
     // Expected during the backfill→live gap: not enough varying history after
@@ -84,6 +87,11 @@ async function main() {
     `next trough: ${result.nextTroughDay ?? "—"} | ` +
       `next peak: ${result.nextPeakDay ?? "—"} | ${result.rows.length} rows`,
   );
+
+  const latestObserved =
+    history[history.length - 1]?.avgPrice ?? result.rows[0].predictedPrice;
+  const narrative = buildNarrative(params, result, latestObserved);
+  console.log(`narrative: ${narrative}`);
 
   if (dry) {
     console.log("\n--dry: not writing. Every 5th projected day:");
@@ -112,6 +120,19 @@ async function main() {
   const { error } = await client.from("forecasts").insert(rows);
   if (error) throw error;
   console.log(`✓ Inserted ${rows.length} forecast rows (generated_at ${generatedAt})`);
+
+  const { error: narrativeErr } = await client.from("daily_narrative").upsert(
+    {
+      narrative_date: result.anchorDay,
+      fuel_name: FUEL_NAME,
+      region: REGION,
+      narrative_text: narrative,
+      generated_at: generatedAt,
+    },
+    { onConflict: "narrative_date,fuel_name,region" },
+  );
+  if (narrativeErr) throw narrativeErr;
+  console.log(`✓ Upserted daily_narrative for ${result.anchorDay}`);
 }
 
 main().catch((err) => {
