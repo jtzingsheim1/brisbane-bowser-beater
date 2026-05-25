@@ -3,12 +3,20 @@ import CycleEducation from "@/components/CycleEducation";
 import DailyNarrative from "@/components/DailyNarrative";
 import PriceChart from "@/components/PriceChart";
 import PrivacyTrustPane from "@/components/PrivacyTrustPane";
+import { headers } from "next/headers";
+import { after } from "next/server";
 import {
   getBrisbaneDailyU91History,
   getLatestForecast,
 } from "@/lib/aggregates";
+import { recordVisit } from "@/lib/usage";
 
 export default async function Home() {
+  // LUL 4.8 aggregate usage counting — headers captured during render, the
+  // count recorded post-response (best-effort, no PII; see src/lib/usage.ts).
+  const requestHeaders = await headers();
+  after(() => recordVisit(requestHeaders));
+
   const [history, forecast] = await Promise.all([
     getBrisbaneDailyU91History(60),
     getLatestForecast(),

@@ -10,7 +10,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 |---|---|
 | Phase 0 — Discovery | ✅ Complete |
 | Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations 0001–0006 auto-applying on merge; Vercel hookup deferred to Phase 8) |
-| Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, the TS daily projection → `forecasts` table, chunk-5 figure adoption, the **live 30-min GitHub Actions ingestion**, and the **daily forecast generation** all landed — chart history *and* the forecast line run on current data; remaining: the daily narrative generator) |
+| Phase 2 — Data ingestion + forecast model | ✅ Complete (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, TS daily projection, chunk-5 figure adoption, live 30-min GitHub Actions ingestion, daily forecast generation, and the daily narrative generator all landed — the chart, forecast line, and narrative all run on current data) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
 | Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI, and 2×2 starter chip grid all shipped; chip copy/tone polish and plan caching still open) |
 | Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
@@ -84,7 +84,7 @@ Exercises both publishable and secret keys against the data API. Never prints ke
   - **Freshness bump**: every run stamps `ingested_at=now()` on the current snapshot, so `MAX(ingested_at)` advances each 30 min even with no price changes — the 60-min staleness gate stays green without `touch-freshness.mjs` (now dev-only).
   - **Requires three GitHub repo secrets**: `QLD_FUEL_API_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
   - ✅ Daily `forecasts` regeneration scheduled — `scripts/generate-forecast.ts` (`generate-forecast.yml`, daily) reuses the production projection (`src/lib/forecast`) via `tsx`, reads the Brisbane aggregate from Supabase, writes a fresh batch. The Vercel route `/api/cron/forecast` shares the same lib, so they can't drift. The projection now trims flat carry-forward dead-zones before fitting, so the backfill→live gap (and any future cron outage) can't corrupt the phase/swing fit.
-  - ⏳ `daily_narrative` generation still pending — the line under the chart reads a fallback string until a daily generator lands.
+  - ✅ `daily_narrative` generation landed — `src/lib/forecast/narrative.ts` (pure, observation-only) composes the line from the projection; the daily job writes it alongside the forecast. Migration 0008 restructured `daily_narrative` to the `fuel_name`/`region` grain (matching 0007).
 - ✅ **Python scripts `/analysis/*.py`** (own venv; pulls CSVs offline, not via Supabase — deep history doesn't belong in the production DB):
   - `download_data.py` caches ~35 months of QLD CSVs (2023–2026) via the CKAN API
   - `cycle_lib.py` builds the Brisbane core-Metro U91 carry-forward daily series, matching the production aggregate exactly
@@ -111,7 +111,7 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 
 - ✅ Chart component (Recharts) — single Brisbane aggregate line with historical + forecast + uncertainty band slot. History window anchors to the most-recent observed event so the carry-forward function doesn't paint a flat tail when the live cron isn't running.
 - ✅ Static cycle education copy under chart
-- ✅ Daily narrative line below chart — reads `daily_narrative` table with a fallback string until the daily generator lands (Phase 2)
+- ✅ Daily narrative line below chart — reads `daily_narrative` (filtered to U91/brisbane_metro), generated daily by the forecast job; fallback string only if the table is empty
 - ✅ Privacy/trust pane placed near agent input
 - ✅ **`/about/data` page** carrying the verbatim QLD attribution notices (LUL clauses 4.2 + 4.3). Linked from the footer.
 - ✅ **Maintenance / kill-switch page** for staleness or `BBB_PUBLIC=false` — see Phase 5
@@ -131,18 +131,18 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 Cost protection:
 - ⏳ `ANTHROPIC_API_KEY` as Vercel env var only — never in repo, client, or logs (Phase 8 when Vercel hookup lands; local `.env.local` is the dev path)
 - ⏳ Hard daily spend cap set manually in Anthropic console
-- ⏳ Per-IP rate limit via Upstash Redis
+- ✅ Per-IP rate limit via Upstash Redis — `src/lib/rate-limit.ts` (sliding window, 10/60s on the agent route). Graceful no-op until `UPSTASH_REDIS_REST_*` are provisioned (Vercel marketplace, Phase 8).
 - ⏳ Aggressive caching of repeatable queries — partially landed (`unstable_cache` on freshness + aggregates + narrative); agent plan caching pending under Phase 4
-- ⏳ `CRON_SECRET` for cron endpoint protection
+- ✅ `CRON_SECRET` for cron endpoint protection — the Vercel forecast route (`/api/cron/forecast`) honours a Bearer `CRON_SECRET` when set (open when unset, for local dev). The GitHub Actions ingest/forecast jobs write straight to Supabase and don't traverse this route.
 - ✅ Max tokens cap on every Anthropic call (1500 in `src/app/api/agent/route.ts`)
 - ✅ Max agent iterations cap (6 steps via `stopWhen: stepCountIs(6)`)
 - ✅ Strict input validation in the agent route — 20-message cap, 16k-char total cap, JSON parse guard
-- ⏳ Code-level BYO-key scaffolding (header override, no UI exposure)
+- ✅ BYO-key scaffolding — the agent route accepts an `x-anthropic-key` header that overrides the server key (no UI exposure); the caller then pays for their own usage.
 
 Operational off-switch (see CLAUDE.md "Operational hygiene"):
 - ✅ **Staleness check on render** — every page reads the latest `price_snapshots.ingested_at`; if older than 60 min, render a "Data temporarily unavailable" page instead of chart/agent. Auto-degradation when cron fails.
 - ✅ **`BBB_PUBLIC` env var kill switch** — when unset, whole app renders "currently paused" page. Flip in Vercel dashboard for instant takedown.
-- ⏳ **Server-side aggregate usage counts** — per LUL clause 4.8. Monthly distinct IPs + IP-region lookup, no cookies, no client-side tracking. Stored in a `usage_aggregates` table (small monthly rows). Privacy/trust pane stays literally true.
+- ✅ **Server-side aggregate usage counts** — per LUL clause 4.8. `recordVisit()` (`src/lib/usage.ts`) writes one row per (month, salted-IP-hash, region) to `usage_monthly_visitors` (migration 0009), fired post-response from the homepage via `after()`. No raw IP, no cookies, internal-only (no anon SELECT). No-op until `USAGE_SALT` is set. Privacy/trust pane stays literally true.
 
 ### Phase 6 — Abuse audit (mandatory before deploy)
 
@@ -205,7 +205,7 @@ When picking up cold, the most useful chunks to consider — roughly ordered by 
 5. **Phase 2 chunk 5 — adopt measured figures into UI/agent copy.** CLAUDE.md already carries the verified numbers (period ~39d, swing ~$0.35, peak ~38% in). Propagate into chart copy + agent system prompt, observation-only.
 6. **Phase 5 cost protection layers** — per-IP rate limit via Upstash Redis, `CRON_SECRET`, BYO-key header, `usage_aggregates` table. Off-switch + per-call caps already landed; this is the remaining defensive surface. Mostly autonomous.
 7. ✅ **Phase 2 chunk 1.5 — live 30-min cron.** GitHub Actions ingest + weekly sites refresh, writing straight to Supabase. **Landed** — the chart now runs on current Brisbane data. Needs the three GitHub repo secrets set to run in CI (see the chunk-1 bullet above).
-8. ✅ **Daily forecast regeneration scheduled** — `generate-forecast.yml` runs `scripts/generate-forecast.ts` daily (reuses the production projection via tsx). The remaining piece is the **daily narrative generator** (the text line under the chart, still a fallback string) — it can ride the same daily cadence once built.
+8. ✅ **Daily forecast + narrative regeneration scheduled** — `generate-forecast.yml` runs `scripts/generate-forecast.ts` daily (reuses the production projection via tsx), writing both the `forecasts` batch and the `daily_narrative` line. Phase 2 is complete.
 
 Open external blocker: **none** — the QLD publisher token has been received and the live cron is in. Deploy (Phase 8) is the remaining gate to having the cron run on schedule in the cloud (locally/CI it already works).
 

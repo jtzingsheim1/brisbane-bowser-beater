@@ -1,4 +1,4 @@
-import { anthropic } from "@ai-sdk/anthropic";
+import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
 import {
   convertToModelMessages,
   stepCountIs,
@@ -7,6 +7,8 @@ import {
 } from "ai";
 import { SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 import { getForecastTool, getRecentHistoryTool } from "@/lib/agent/tools";
+import { checkAgentRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,13 +35,30 @@ function totalTextChars(messages: UIMessage[]): number {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // BYO-key (cost defence layer 4): an `x-anthropic-key` header overrides the
+  // server key, so the caller pays for their own usage. No UI exposes this — it
+  // is scaffolding for power users / load shedding.
+  const byoKey = req.headers.get("x-anthropic-key")?.trim() || null;
+  if (!process.env.ANTHROPIC_API_KEY && !byoKey) {
     return Response.json(
       {
         error:
           "Agent not configured. Set ANTHROPIC_API_KEY to enable the planner.",
       },
       { status: 503 },
+    );
+  }
+
+  // Per-IP rate limit (cost defence layer 2). No-op until Upstash is provisioned.
+  const ip = getClientIp(req.headers) ?? "unknown";
+  const rate = await checkAgentRateLimit(ip);
+  if (!rate.allowed) {
+    return Response.json(
+      { error: "Too many requests — give it a moment and try again." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      },
     );
   }
 
@@ -63,8 +82,9 @@ export async function POST(req: Request) {
 
   const modelMessages = await convertToModelMessages(messages);
 
+  const provider = byoKey ? createAnthropic({ apiKey: byoKey }) : anthropic;
   const result = streamText({
-    model: anthropic(MODEL_ID),
+    model: provider(MODEL_ID),
     system: SYSTEM_PROMPT,
     messages: modelMessages,
     tools: {
