@@ -1,0 +1,38 @@
+# Weekly Brisbane sites refresh.
+#
+# Runs scripts/refresh-sites.mjs to keep the `sites` table (brand / postcode /
+# suburb / state / location) current. The price ingest depends on these rows to
+# scope prices to core Brisbane. LUL clause 2.3 allows 24 hr for non-price data;
+# weekly is conservative and stations rarely move.
+#
+# Required repo secrets (same as ingest-prices):
+#   QLD_FUEL_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+name: Refresh sites
+
+on:
+  schedule:
+    - cron: "17 14 * * 1" # weekly, Monday 14:17 UTC (~Tue AEST, off-peak)
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-sites
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Refresh Brisbane sites
+        run: node scripts/refresh-sites.mjs
+        env:
+          QLD_FUEL_API_TOKEN: ${{ secrets.QLD_FUEL_API_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

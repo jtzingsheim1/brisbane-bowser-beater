@@ -9,6 +9,8 @@
     "lint": "eslint",
     "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
     "backfill:csv": "node --env-file=.env.local scripts/backfill-csv.mjs",
+    "ingest:prices": "node --env-file=.env.local scripts/ingest-prices.mjs",
+    "refresh:sites": "node --env-file=.env.local scripts/refresh-sites.mjs",
     "freshness:touch": "node --env-file=.env.local scripts/touch-freshness.mjs",
     "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs && next dev"
   },

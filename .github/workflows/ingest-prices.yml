@@ -1,0 +1,43 @@
+# Live Brisbane U91 price ingest — every 30 minutes.
+#
+# Runs scripts/ingest-prices.mjs on a GitHub-hosted runner, writing straight to
+# Supabase with the service_role key. Kept off Vercel deliberately (free for
+# public repos; keeps the Hobby tier clean). Satisfies LUL clause 2.3 (price
+# changes published within 30 min); the app's 60-min staleness gate is a 2x
+# buffer if a run is delayed or fails.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   QLD_FUEL_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#
+# Schedules only run on the default branch once merged. Use the "Run workflow"
+# button (workflow_dispatch) to trigger manually.
+
+name: Ingest prices
+
+on:
+  schedule:
+    - cron: "*/30 * * * *" # every 30 min (UTC; GitHub may delay under load)
+  workflow_dispatch:
+
+# Never overlap runs; a slow run shouldn't stack on the next tick.
+concurrency:
+  group: ingest-prices
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Ingest Brisbane U91 prices
+        run: node scripts/ingest-prices.mjs
+        env:
+          QLD_FUEL_API_TOKEN: ${{ secrets.QLD_FUEL_API_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
