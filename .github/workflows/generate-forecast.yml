@@ -1,0 +1,41 @@
+# Daily Brisbane U91 forecast generation.
+#
+# Runs scripts/generate-forecast.ts (via tsx, reusing the production projection
+# in src/lib/forecast) once a day, after the live history has accumulated. Reads
+# the Brisbane aggregate from Supabase and writes a fresh forecast batch. Writes
+# straight to Supabase off repo secrets -- never touches Vercel.
+#
+# Only needs the Supabase secrets (no QLD token -- it reads from the DB, not the
+# QLD API):
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#
+# If there isn't enough varying history yet (backfill→live gap), the script logs
+# and exits clean without writing -- the line simply doesn't update that day.
+
+name: Generate forecast
+
+on:
+  schedule:
+    - cron: "30 20 * * *" # daily ~06:30 AEST (20:30 UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: generate-forecast
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Generate Brisbane U91 forecast
+        run: npx tsx scripts/generate-forecast.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
