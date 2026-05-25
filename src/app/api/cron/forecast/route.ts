@@ -77,8 +77,10 @@ export async function GET(req: Request) {
 
   const { error } = await supabaseAdmin().from("forecasts").insert(rows);
   if (error) {
+    // Log details server-side; don't leak DB internals in the response body.
+    console.error("[cron/forecast] write failed:", error.message);
     return Response.json(
-      { ok: false, reason: "write_failed", message: error.message },
+      { ok: false, reason: "write_failed" },
       { status: 500 },
     );
   }

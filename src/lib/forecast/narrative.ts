@@ -14,6 +14,7 @@ function fmtDate(isoDay: string): string {
     weekday: "short",
     day: "numeric",
     month: "short",
+    timeZone: "Australia/Brisbane",
   }).format(new Date(`${isoDay}T00:00:00Z`));
 }
 
