@@ -5,6 +5,12 @@ import {
   streamText,
   type UIMessage,
 } from "ai";
+import {
+  cachedPlanResponse,
+  getCachedPlan,
+  hashSituation,
+  putCachedPlan,
+} from "@/lib/agent/plan-cache";
 import { SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 import { getForecastTool, getRecentHistoryTool } from "@/lib/agent/tools";
 import { checkAgentRateLimit } from "@/lib/rate-limit";
@@ -80,6 +86,16 @@ export async function POST(req: Request) {
     return new Response("Input too large", { status: 400 });
   }
 
+  // Plan cache (cost defence layer 3): identical situation on the same day →
+  // replay the cached plan, no Anthropic call. Best-effort; fall back to live.
+  const situationHash = hashSituation(messages);
+  try {
+    const cached = await getCachedPlan(situationHash);
+    if (cached) return cachedPlanResponse(cached);
+  } catch (error) {
+    console.error("[plan-cache] read failed; continuing live", error);
+  }
+
   const modelMessages = await convertToModelMessages(messages);
 
   const provider = byoKey ? createAnthropic({ apiKey: byoKey }) : anthropic;
@@ -93,6 +109,11 @@ export async function POST(req: Request) {
     },
     stopWhen: stepCountIs(MAX_STEPS),
     maxOutputTokens: MAX_OUTPUT_TOKENS,
+    onFinish: ({ text }) => {
+      void putCachedPlan(situationHash, text).catch((error) =>
+        console.error("[plan-cache] write failed", error),
+      );
+    },
   });
 
   return result.toUIMessageStreamResponse();

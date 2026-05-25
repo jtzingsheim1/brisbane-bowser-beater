@@ -12,11 +12,11 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations 0001–0006 auto-applying on merge; Vercel hookup deferred to Phase 8) |
 | Phase 2 — Data ingestion + forecast model | ✅ Complete (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, TS daily projection, chunk-5 figure adoption, live 30-min GitHub Actions ingestion, daily forecast generation, and the daily narrative generator all landed — the chart, forecast line, and narrative all run on current data) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
-| Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI, and 2×2 starter chip grid all shipped; chip copy/tone polish and plan caching still open) |
+| Phase 4 — Agent layer | ✅ Complete (API route, two tools, system prompt, streaming chat UI, 2×2 starter chip grid, chip copy polish, and plan caching by `(situation_hash, day)` all shipped) |
 | Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
 | Phase 6 — Abuse audit | ✅ Complete (`docs/abuse-audit.md` — every cost/abuse vector enumerated with its defence + a pre-deploy checklist) |
 | Phase 7 — Public docs | ✅ Complete (README rewritten in public voice; `/about/data` attribution page shipped in Phase 3) |
-| Phase 8 — Deploy + verify | Pending |
+| Phase 8 — Deploy + verify | Pending — runbook ready (`docs/deploy-runbook.md`); needs Vercel hookup + dashboard config |
 | Phase 9 — Wrap | Pending |
 
 ---
@@ -123,8 +123,8 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 - ✅ Two tools: `get_forecast`, `get_recent_history`. `get_today_spread` was dropped along with Section 2. `get_forecast` returns `status: "unavailable"` until the forecasts table is populated.
 - ✅ System prompt at `src/lib/agent/system-prompt.ts` encoding cycle context, role, chip-cell awareness (incl. C-cell road-trip variant), educational nudges, defamation-aware language constraints, and results-first interaction shape. **Cycle figures still qualitative pending Phase 2 measured values.**
 - ✅ Streaming response with visible tool calls — chat UI at `src/components/AgentChat.tsx` (2×2 starter chip grid + textbox + message list + inline tool-call markers)
-- ✅ **Starter chip grid** — 4 chips in a 2×2 quadrant (flexibility × frequency). Each chip clicks into a conversational kick-off message that identifies the cell (A/B/C/D). Chips hide after the first message. **Open polish item**: chip copy/tone — edit the `CHIPS` array at the top of `AgentChat.tsx`.
-- ⏳ Plan output cached per `(situation_hash, day)` in Supabase — needs a small migration; deferred until after first end-to-end agent smoke test
+- ✅ **Starter chip grid** — 4 chips in a 2×2 quadrant (flexibility × frequency). Each chip clicks into a conversational kick-off message that identifies the cell (A/B/C/D). Chips hide after the first message. Chip copy/tone polished.
+- ✅ Plan output cached per `(situation_hash, day)` — `src/lib/agent/plan-cache.ts` + migration 0010 (`agent_plans`). The route replays a cached plan on hit (no Anthropic call) and caches on finish; cache failures fall back to a live call. Internal table (no anon access).
 
 ### Phase 5 — Cost protection + operational off-switch (build all)
 
@@ -132,7 +132,7 @@ Cost protection:
 - ⏳ `ANTHROPIC_API_KEY` as Vercel env var only — never in repo, client, or logs (Phase 8 when Vercel hookup lands; local `.env.local` is the dev path)
 - ⏳ Hard daily spend cap set manually in Anthropic console
 - ✅ Per-IP rate limit via Upstash Redis — `src/lib/rate-limit.ts` (sliding window, 10/60s on the agent route). Graceful no-op until `UPSTASH_REDIS_REST_*` are provisioned (Vercel marketplace, Phase 8).
-- ⏳ Aggressive caching of repeatable queries — partially landed (`unstable_cache` on freshness + aggregates + narrative); agent plan caching pending under Phase 4
+- ✅ Aggressive caching of repeatable queries — `unstable_cache` on freshness + aggregates + narrative, plus agent plan caching (`agent_plans`, Phase 4).
 - ✅ `CRON_SECRET` for cron endpoint protection — the Vercel forecast route (`/api/cron/forecast`) honours a Bearer `CRON_SECRET` when set (open when unset, for local dev). The GitHub Actions ingest/forecast jobs write straight to Supabase and don't traverse this route.
 - ✅ Max tokens cap on every Anthropic call (1500 in `src/app/api/agent/route.ts`)
 - ✅ Max agent iterations cap (6 steps via `stopWhen: stepCountIs(6)`)
