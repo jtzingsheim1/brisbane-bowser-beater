@@ -13,7 +13,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 2 — Data ingestion + forecast model | 🚧 In progress (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, the TS daily projection → `forecasts` table, chunk-5 figure adoption, the **live 30-min GitHub Actions ingestion**, and the **daily forecast generation** all landed — chart history *and* the forecast line run on current data; remaining: the daily narrative generator) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
 | Phase 4 — Agent layer | 🚧 In progress (API route, two tools, system prompt, streaming chat UI, and 2×2 starter chip grid all shipped; chip copy/tone polish and plan caching still open) |
-| Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
+| Phase 5 — Cost protection + off-switch | ✅ Code complete (off-switch, input caps, max tokens/steps, per-IP rate limit (Upstash, graceful), `CRON_SECRET` on the forecast route, BYO-key header, and `usage_monthly_visitors` LUL 4.8 counting all landed; deploy-time config — Anthropic spend cap, Upstash + `USAGE_SALT` provisioning, env-var placement — happens at Phase 8) |
 | Phase 6 — Abuse audit | Pending |
 | Phase 7 — Public docs | Pending |
 | Phase 8 — Deploy + verify | Pending |
@@ -131,18 +131,18 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 Cost protection:
 - ⏳ `ANTHROPIC_API_KEY` as Vercel env var only — never in repo, client, or logs (Phase 8 when Vercel hookup lands; local `.env.local` is the dev path)
 - ⏳ Hard daily spend cap set manually in Anthropic console
-- ⏳ Per-IP rate limit via Upstash Redis
+- ✅ Per-IP rate limit via Upstash Redis — `src/lib/rate-limit.ts` (sliding window, 10/60s on the agent route). Graceful no-op until `UPSTASH_REDIS_REST_*` are provisioned (Vercel marketplace, Phase 8).
 - ⏳ Aggressive caching of repeatable queries — partially landed (`unstable_cache` on freshness + aggregates + narrative); agent plan caching pending under Phase 4
-- ⏳ `CRON_SECRET` for cron endpoint protection
+- ✅ `CRON_SECRET` for cron endpoint protection — the Vercel forecast route (`/api/cron/forecast`) honours a Bearer `CRON_SECRET` when set (open when unset, for local dev). The GitHub Actions ingest/forecast jobs write straight to Supabase and don't traverse this route.
 - ✅ Max tokens cap on every Anthropic call (1500 in `src/app/api/agent/route.ts`)
 - ✅ Max agent iterations cap (6 steps via `stopWhen: stepCountIs(6)`)
 - ✅ Strict input validation in the agent route — 20-message cap, 16k-char total cap, JSON parse guard
-- ⏳ Code-level BYO-key scaffolding (header override, no UI exposure)
+- ✅ BYO-key scaffolding — the agent route accepts an `x-anthropic-key` header that overrides the server key (no UI exposure); the caller then pays for their own usage.
 
 Operational off-switch (see CLAUDE.md "Operational hygiene"):
 - ✅ **Staleness check on render** — every page reads the latest `price_snapshots.ingested_at`; if older than 60 min, render a "Data temporarily unavailable" page instead of chart/agent. Auto-degradation when cron fails.
 - ✅ **`BBB_PUBLIC` env var kill switch** — when unset, whole app renders "currently paused" page. Flip in Vercel dashboard for instant takedown.
-- ⏳ **Server-side aggregate usage counts** — per LUL clause 4.8. Monthly distinct IPs + IP-region lookup, no cookies, no client-side tracking. Stored in a `usage_aggregates` table (small monthly rows). Privacy/trust pane stays literally true.
+- ✅ **Server-side aggregate usage counts** — per LUL clause 4.8. `recordVisit()` (`src/lib/usage.ts`) writes one row per (month, salted-IP-hash, region) to `usage_monthly_visitors` (migration 0009), fired post-response from the homepage via `after()`. No raw IP, no cookies, internal-only (no anon SELECT). No-op until `USAGE_SALT` is set. Privacy/trust pane stays literally true.
 
 ### Phase 6 — Abuse audit (mandatory before deploy)
 
