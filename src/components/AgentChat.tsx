@@ -17,31 +17,31 @@ type Chip = {
 const CHIPS: Chip[] = [
   {
     id: "A",
-    label: "Routine commuter",
-    hint: "Frequent fills, locked-in schedule",
+    label: "Clockwork commuter",
+    hint: "Same fills every week, not much give",
     kickoff:
-      "I'm a routine commuter — I fill every week on roughly the same days, and I don't have much flexibility on when I can fill. Help me time my fills around the cycle.",
+      "I fill up every week on much the same days, and I can't really move when I fill. Help me get the most out of the cycle within those constraints.",
   },
   {
     id: "B",
-    label: "Frequent + flexible",
-    hint: "Frequent fills, schedule has wiggle room",
+    label: "Regular, with options",
+    hint: "Fill often, can shift the day",
     kickoff:
-      "I fill frequently (weekly or so), and I've got room to shift my fill day around. Help me work the cycle to my advantage.",
+      "I fill pretty often — weekly-ish — but I can shift which day I do it. Help me work the cycle to my advantage.",
   },
   {
     id: "C",
-    label: "Tight single fill",
-    hint: "Infrequent fills, locked-in timing",
+    label: "One fill, make it count",
+    hint: "Rare fills, tight timing — road trips too",
     kickoff:
-      "I don't fill often, and when I do my timing is pretty constrained. Help me nail the next one. (If I mention a road trip, the deadline is fixed but the prep-fill timing has some flex.)",
+      "I don't fill often, so the next one matters. Help me nail the timing and the station. (If it's for a road trip: the trip date is fixed, but I can choose when to fill beforehand.)",
   },
   {
     id: "D",
-    label: "Light + flexible",
-    hint: "Infrequent fills, lots of flexibility",
+    label: "Easy-going",
+    hint: "Light driver, plenty of slack",
     kickoff:
-      "I'm a light driver with lots of slack on when I fill. Help me design my fill cadence around the cycle.",
+      "I'm a light driver with loads of flexibility on when I fill. Help me build a fill rhythm around the cycle.",
   },
 ];
 
