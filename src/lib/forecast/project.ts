@@ -104,8 +104,8 @@ function round3(x: number): number {
 // Drop everything up to and including the last dead-zone (flat carry-forward)
 // run, returning the most-recent contiguous stretch of varying data. `pts` must
 // be ascending by day. If the series ends inside a dead zone, returns an empty
-// array (the caller then declines to forecast).
-function trimDeadZone(pts: ObservedPoint[]): ObservedPoint[] {
+// array (the caller then declines to forecast). Exported for unit tests.
+export function trimDeadZone(pts: ObservedPoint[]): ObservedPoint[] {
   let cutoff = 0;
   let runLen = 1;
   for (let i = 1; i < pts.length; i++) {
@@ -117,6 +117,23 @@ function trimDeadZone(pts: ObservedPoint[]): ObservedPoint[] {
     }
   }
   return pts.slice(cutoff);
+}
+
+// Collapse a flat run at the *tail* of the window down to just the anchor
+// point. A short stall (e.g. a weekend with no price changes) leaves a handful
+// of identical trailing values that bias the swing fit toward zero without
+// adding cycle-shape information — below trimDeadZone's run-length gate but
+// still harmful. Keep the anchor (it pins the level) and drop the rest of the
+// run. `pts` ascending by day. Exported for unit tests.
+export function stripTrailingFlat(pts: ObservedPoint[]): ObservedPoint[] {
+  if (pts.length < 2) return pts;
+  const anchorVal = pts[pts.length - 1].avgPrice;
+  let start = pts.length - 1;
+  while (start > 0 && Math.abs(pts[start - 1].avgPrice - anchorVal) <= FLAT_EPS) {
+    start--;
+  }
+  if (start === pts.length - 1) return pts; // no trailing flat run
+  return [...pts.slice(0, start), pts[pts.length - 1]];
 }
 
 /**
@@ -155,9 +172,10 @@ export function projectForecast(
     (p) => anchorIdx - dayIndex(p.day) < FIT_WINDOW_DAYS,
   );
 
-  // Fit only against the most-recent run of genuinely-varying data, so a flat
-  // carry-forward dead zone in the window can't corrupt the phase/swing fit.
-  const fitPts = trimDeadZone(recentWindow);
+  // Fit only against the most-recent run of genuinely-varying data: trim a long
+  // dead zone, then collapse any short flat tail (a brief stall), so neither can
+  // corrupt the phase/swing fit.
+  const fitPts = stripTrailingFlat(trimDeadZone(recentWindow));
   if (fitPts.length < MIN_FIT_POINTS) return null;
 
   const offsets = fitPts.map((p) => anchorIdx - dayIndex(p.day)); // days before anchor
