@@ -17,9 +17,13 @@ export default function CycleEducation() {
           the within-cycle variation.
         </p>
         <p>
-          That&rsquo;s a useful thing to know, because it means the cycle is
-          something you can plan around. Consumers can save by timing fills
-          with the cycle rather than refuelling whenever the gauge gets low.
+          On recent form the cycle runs roughly 39 days and swings about 35c a
+          litre between trough and peak, with prices tending to climb to the
+          peak faster than they ease back down. Those are estimates from the
+          historical price series rather than promises &mdash; but they&rsquo;re
+          why the cycle is worth planning around. Timing your fills with it,
+          instead of refuelling whenever the gauge gets low, is where the
+          saving comes from.
         </p>
         <p>
           The ACCC publishes regular{" "}
