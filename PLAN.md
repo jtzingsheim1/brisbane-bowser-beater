@@ -9,11 +9,11 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase | Status |
 |---|---|
 | Phase 0 — Discovery | ✅ Complete |
-| Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations 0001–0006 auto-applying on merge; Vercel hookup deferred to Phase 8) |
+| Phase 1 — Scaffold | ✅ Complete (Supabase ↔ GitHub integration confirmed via migrations auto-applying on merge; Vercel hookup deferred to Phase 8) |
 | Phase 2 — Data ingestion + forecast model | ✅ Complete (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, TS daily projection, chunk-5 figure adoption, live 30-min GitHub Actions ingestion, daily forecast generation, and the daily narrative generator all landed — the chart, forecast line, and narrative all run on current data) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
 | Phase 4 — Agent layer | ✅ Complete (API route, two tools, system prompt, streaming chat UI, 2×2 starter chip grid, chip copy polish, and plan caching by `(situation_hash, day)` all shipped) |
-| Phase 5 — Cost protection + off-switch | 🚧 In progress (off-switch + input caps + max output tokens + max agent steps landed; per-IP rate limit, `CRON_SECRET`, BYO-key, and usage-aggregates table still pending) |
+| Phase 5 — Cost protection + off-switch | ✅ Code complete (off-switch, input caps, max tokens/steps, per-IP rate limit (Upstash, graceful), `CRON_SECRET` on the forecast route, BYO-key header, and `usage_monthly_visitors` LUL 4.8 counting all landed; deploy-time config — Anthropic spend cap, Upstash + `USAGE_SALT` provisioning, env-var placement — happens at Phase 8) |
 | Phase 6 — Abuse audit | ✅ Complete (`docs/abuse-audit.md` — every cost/abuse vector enumerated with its defence + a pre-deploy checklist) |
 | Phase 7 — Public docs | ✅ Complete (README rewritten in public voice; `/about/data` attribution page shipped in Phase 3) |
 | Phase 8 — Deploy + verify | Pending — runbook ready (`docs/deploy-runbook.md`); needs Vercel hookup + dashboard config |
@@ -54,7 +54,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | `.env.local` populated (publishable URL + publishable key + secret key) | ✅ Verified via `npm run verify:supabase` |
 | `@supabase/supabase-js` client factories in `src/lib/supabase/server.ts` | ✅ Done |
 | Supabase CLI as dev dep + `supabase/` folder scaffolded | ✅ Done |
-| Supabase ↔ GitHub integration enabled in dashboard | ✅ Confirmed — migrations 0001–0006 have all auto-applied on merge to `main` |
+| Supabase ↔ GitHub integration enabled in dashboard | ✅ Confirmed — migrations have all auto-applied on merge to `main` (0001 through 0011) |
 | First migration | ✅ Done (migration 0001 + five follow-ups; see `supabase/migrations/`) |
 | Vercel project hookup + env vars | **Deferred to Phase 8** (not blocking dev work) |
 
@@ -121,7 +121,7 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 
 - ✅ API route at `src/app/api/agent/route.ts` using Vercel AI SDK v6 + `@ai-sdk/anthropic` (Sonnet 4.6). Returns 503 with a clear message when `ANTHROPIC_API_KEY` is unset.
 - ✅ Two tools: `get_forecast`, `get_recent_history`. `get_today_spread` was dropped along with Section 2. `get_forecast` returns `status: "unavailable"` until the forecasts table is populated.
-- ✅ System prompt at `src/lib/agent/system-prompt.ts` encoding cycle context, role, chip-cell awareness (incl. C-cell road-trip variant), educational nudges, defamation-aware language constraints, and results-first interaction shape. **Cycle figures still qualitative pending Phase 2 measured values.**
+- ✅ System prompt at `src/lib/agent/system-prompt.ts` encoding cycle context, role, chip-cell awareness (incl. C-cell road-trip variant), educational nudges, defamation-aware language constraints, and results-first interaction shape. Cycle figures are the measured values from `cycle_params.json` (adopted in chunk 5).
 - ✅ Streaming response with visible tool calls — chat UI at `src/components/AgentChat.tsx` (2×2 starter chip grid + textbox + message list + inline tool-call markers)
 - ✅ **Starter chip grid** — 4 chips in a 2×2 quadrant (flexibility × frequency). Each chip clicks into a conversational kick-off message that identifies the cell (A/B/C/D). Chips hide after the first message. Chip copy/tone polished.
 - ✅ Plan output cached per `(situation_hash, day)` — `src/lib/agent/plan-cache.ts` + migration 0010 (`agent_plans`). The route replays a cached plan on hit (no Anthropic call) and caches on finish; cache failures fall back to a live call. Internal table (no anon access).

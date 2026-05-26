@@ -45,6 +45,11 @@ export async function POST(req: Request) {
   // server key, so the caller pays for their own usage. No UI exposes this — it
   // is scaffolding for power users / load shedding.
   const byoKey = req.headers.get("x-anthropic-key")?.trim() || null;
+  if (byoKey && (!byoKey.startsWith("sk-ant-") || byoKey.length > 200)) {
+    // Reject before forwarding to Anthropic — don't let the server be used as
+    // a free oracle to probe arbitrary strings as API keys.
+    return new Response("Invalid API key", { status: 400 });
+  }
   if (!process.env.ANTHROPIC_API_KEY && !byoKey) {
     return Response.json(
       {
@@ -56,16 +61,20 @@ export async function POST(req: Request) {
   }
 
   // Per-IP rate limit (cost defence layer 2). No-op until Upstash is provisioned.
-  const ip = getClientIp(req.headers) ?? "unknown";
-  const rate = await checkAgentRateLimit(ip);
-  if (!rate.allowed) {
-    return Response.json(
-      { error: "Too many requests — give it a moment and try again." },
-      {
-        status: 429,
-        headers: { "Retry-After": String(rate.retryAfterSeconds) },
-      },
-    );
+  // Skip when no trustworthy client IP is present, rather than bucketing every
+  // header-less request together (which would cause shared false 429s).
+  const ip = getClientIp(req.headers);
+  if (ip) {
+    const rate = await checkAgentRateLimit(ip);
+    if (!rate.allowed) {
+      return Response.json(
+        { error: "Too many requests — give it a moment and try again." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rate.retryAfterSeconds) },
+        },
+      );
+    }
   }
 
   let body: { messages?: UIMessage[] };

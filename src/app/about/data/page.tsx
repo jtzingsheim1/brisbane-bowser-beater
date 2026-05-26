@@ -6,6 +6,10 @@ export const metadata: Metadata = {
     "Attribution and sourcing for the fuel price data used by Brisbane Bowser Beater.",
 };
 
+// Render per-request so the verbatim attribution notices always carry the
+// current year (LUL 4.2/4.3), not the build-time year.
+export const dynamic = "force-dynamic";
+
 export default function AboutDataPage() {
   const year = new Date().getFullYear();
 

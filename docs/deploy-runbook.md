@@ -13,8 +13,9 @@ needs a code change.
 - **Anthropic spend cap** — console → Billing → set a hard monthly cap. *This is
   the ultimate cost backstop; do not skip.*
 - **Upstash Redis** — add via the Vercel Marketplace (free tier). It injects
-  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. (Until set, the rate
-  limiter is a no-op — fine for a soft launch, but set it before sharing widely.)
+  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. **Gate: provision before
+  any public sharing** — without it the per-IP rate limit is OFF and the
+  Anthropic spend cap is the only backstop against agent abuse.
 - **Generate secrets** — `openssl rand -hex 32` twice, for `CRON_SECRET` and
   `USAGE_SALT`.
 
@@ -29,7 +30,7 @@ needs a code change.
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | secret — server only |
 | `ANTHROPIC_API_KEY` | ✅ | the agent; 503s without it |
 | `USAGE_SALT` | ✅ | enables LUL 4.8 counting; no-op without |
-| `CRON_SECRET` | ◻ | gates `/api/cron/forecast` (the GH jobs don't use it) |
+| `CRON_SECRET` | ✅ | **set it** — without it `/api/cron/forecast` is open to anyone (the GH Actions jobs write straight to Supabase and don't use this route, but the public endpoint still exists) |
 | `UPSTASH_REDIS_REST_URL` | ◻ | from Upstash; enables rate limit |
 | `UPSTASH_REDIS_REST_TOKEN` | ◻ | from Upstash |
 | `BBB_PUBLIC` | ✅ | **leave `false` for now** — see step 4 |

@@ -12,8 +12,8 @@
     "ingest:prices": "node --env-file=.env.local scripts/ingest-prices.mjs",
     "refresh:sites": "node --env-file=.env.local scripts/refresh-sites.mjs",
     "forecast:generate": "node --env-file=.env.local --import tsx scripts/generate-forecast.ts",
-    "freshness:touch": "node --env-file=.env.local scripts/touch-freshness.mjs",
-    "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs && next dev"
+    "freshness:touch": "node --env-file=.env.local scripts/touch-freshness.mjs --force",
+    "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs --force && next dev"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.78",

@@ -15,9 +15,16 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 type HeaderBag = { get(name: string): string | null };
 
 export function getClientIp(h: HeaderBag): string | null {
+  // Prefer Vercel's injected client IP — set by the edge, not user-spoofable,
+  // unlike the leftmost x-forwarded-for value (which a client can forge to
+  // pick its own rate-limit bucket).
+  const vercel = h.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0]?.trim() || null;
+  const real = h.get("x-real-ip");
+  if (real) return real.trim() || null;
   const xff = h.get("x-forwarded-for");
   if (xff) return xff.split(",")[0]?.trim() || null;
-  return h.get("x-real-ip");
+  return null;
 }
 
 function regionFrom(h: HeaderBag): string {

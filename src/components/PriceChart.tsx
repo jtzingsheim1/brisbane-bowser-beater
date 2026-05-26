@@ -36,17 +36,16 @@ function buildRows(
     });
   }
   for (const f of forecast) {
-    const existing = map.get(f.day) ?? {
+    const existing = map.get(f.day);
+    map.set(f.day, {
       day: f.day,
-      observed: null,
-      forecast: null,
-      band: null,
-    };
-    existing.forecast = f.predictedPrice;
-    if (f.bandLow !== null && f.bandHigh !== null) {
-      existing.band = [f.bandLow, f.bandHigh];
-    }
-    map.set(f.day, existing);
+      observed: existing?.observed ?? null,
+      forecast: f.predictedPrice,
+      band:
+        f.bandLow !== null && f.bandHigh !== null
+          ? [f.bandLow, f.bandHigh]
+          : (existing?.band ?? null),
+    });
   }
 
   return [...map.values()].sort((a, b) => (a.day < b.day ? -1 : 1));

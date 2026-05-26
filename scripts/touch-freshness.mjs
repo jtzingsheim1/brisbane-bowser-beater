@@ -20,6 +20,17 @@ if (!SUPABASE_URL || !SECRET_KEY) {
   process.exit(1);
 }
 
+// Safety guard: this rewrites ingested_at on every price_snapshots row and is
+// dev-only. Require an explicit --force so it can never run by accident (e.g.
+// against the live DB, where it would mask a real staleness condition).
+if (!process.argv.includes("--force")) {
+  console.error(
+    "Refusing to run without --force. This dev-only helper rewrites " +
+      "ingested_at on every price_snapshots row — never run it against a live DB.",
+  );
+  process.exit(1);
+}
+
 const client = createClient(SUPABASE_URL, SECRET_KEY);
 const now = new Date().toISOString();
 

@@ -3,7 +3,7 @@
  *
  * Encodes:
  *  - Role: focused fuel strategist, not a general chatbot
- *  - Brisbane cycle context (qualitative only — Phase 2 will fill in measured figures)
+ *  - Brisbane cycle context (measured figures from cycle_params.json: ~39d period, ~$0.35 swing)
  *  - Chip quadrant awareness (A/B/C/D + the C-cell road-trip variant)
  *  - Results-first interaction shape (strategy → assumptions → refinement offer)
  *  - The two tools available to the agent (get_forecast, get_recent_history)
@@ -13,7 +13,7 @@
  * Source material lives in CLAUDE.md:
  *  - "Agent — fuel strategist" (role, quadrant, interaction shape, tools)
  *  - "Legal hygiene → Language about retailers and pricing (defamation-aware)"
- *  - "Brisbane fuel cycle (essential context)" (qualitative framing only for now)
+ *  - "Brisbane fuel cycle (essential context)" (measured figures, observation-only framing)
  *
  * Consumed by the Phase 4 API route + tool implementations. This file
  * intentionally contains no runtime logic and no env reads — just the
