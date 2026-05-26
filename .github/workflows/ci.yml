@@ -1,0 +1,43 @@
+# PR + main CI gate: lint, test, build.
+#
+# Runs on every pull request and on pushes to main. These are the same three
+# checks we run locally (npm run lint / test / build). `next build` also runs
+# the full TypeScript typecheck, so types are covered without a separate step.
+#
+# No real secrets needed: env reads in src/lib are lazy (request-time), and the
+# pages that touch Supabase render dynamically, so the build never hits the DB.
+# The dummy NEXT_PUBLIC_* values below are harmless placeholders that bulletproof
+# the build against any accidental module-level env access.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same branch/PR to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
