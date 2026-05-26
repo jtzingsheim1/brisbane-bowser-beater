@@ -1,0 +1,36 @@
+# CodeQL static security analysis (free for public repos).
+#
+# Scans the JS/TS sources for security vulnerabilities and common quality bugs
+# on each PR, on pushes to main, and weekly (to catch newly-published query
+# patterns against unchanged code). Results surface in the repo's Security tab.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 6 * * 1" # weekly, Monday 06:41 UTC (off-peak)
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write # upload results to the Security tab
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
