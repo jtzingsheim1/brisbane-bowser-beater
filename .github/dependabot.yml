@@ -1,0 +1,34 @@
+# Dependabot config — scheduled dependency-update PRs.
+#
+# Not a per-PR check; Dependabot opens its own PRs on the schedule below (plus
+# security PRs out-of-band when a vulnerable dependency is flagged). Those PRs
+# are then gated by the CI workflow (lint/test/build), so a bump only merges if
+# it stays green.
+#
+# Two ecosystems: npm (the Next.js app) and the GitHub Actions we pin by version.
+# The offline Python in /analysis runs rarely off its own venv — intentionally
+# left out to avoid noise.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the routine minor/patch churn; majors stay separate so
+      # breaking bumps get reviewed on their own.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
