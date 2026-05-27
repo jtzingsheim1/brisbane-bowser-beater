@@ -24,6 +24,14 @@ const RESOURCES = [
     name: "Queensland Fuel Prices February 2026",
     url: "https://www.data.qld.gov.au/dataset/0dfad294-f852-45a5-b86f-986773745fe2/resource/f013457b-fd77-4cf0-91e7-28ef983d8c3c/download/fuel-prices-2026-02-changes-only.csv",
   },
+  // March 2026 was not published by QLD as of 2026-05-27 (April landed first).
+  // April is loaded for chart display only; the cycle model deliberately does
+  // NOT fit across the March hole (see PLAN.md). When March backfills, add it
+  // here and the deadzone gap closes automatically.
+  {
+    name: "Queensland Fuel Prices April 2026",
+    url: "https://www.data.qld.gov.au/dataset/0dfad294-f852-45a5-b86f-986773745fe2/resource/3584e9ca-0d92-4187-9f93-b60c41cb0c94/download/fuel-prices-2026-04-changes-only.csv",
+  },
 ];
 
 const BATCH_SIZE = 500;

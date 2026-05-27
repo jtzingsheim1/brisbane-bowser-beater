@@ -20,14 +20,14 @@ type ChartRow = {
   band: [number, number] | null;
 };
 
-function inDeadzone(day: string, deadzone: Deadzone | null): boolean {
-  return deadzone !== null && day >= deadzone.start && day <= deadzone.end;
+function inDeadzone(day: string, deadzones: Deadzone[]): boolean {
+  return deadzones.some((d) => day >= d.start && day <= d.end);
 }
 
 function buildRows(
   history: DailyPoint[],
   forecast: ForecastPoint[],
-  deadzone: Deadzone | null,
+  deadzones: Deadzone[],
 ): ChartRow[] {
   const lastObservedDay = history.reduce<string | null>(
     (max, h) => (max === null || h.day > max ? h.day : max),
@@ -52,11 +52,11 @@ function buildRows(
     const isAnchor = h.day === lastObservedDay && futureForecast.length > 0;
     byDay.set(h.day, {
       day: h.day,
-      // Days inside the no-data gap are forward-filled by the RPC; null them so
+      // Days inside a no-data gap are forward-filled by the RPC; null them so
       // the observed line breaks rather than drawing a misleading flat line.
       // The day slot is kept so the axis spacing stays calendar-accurate and
       // the hatched ReferenceArea lines up.
-      observed: inDeadzone(h.day, deadzone) ? null : h.avgPrice,
+      observed: inDeadzone(h.day, deadzones) ? null : h.avgPrice,
       forecast: isAnchor ? h.avgPrice : null,
       band: isAnchor ? [h.avgPrice, h.avgPrice] : null,
     });
@@ -139,40 +139,53 @@ function ChartTooltip({ active, label, payload }: ChartTooltipProps) {
   );
 }
 
+type DeadzoneBand = { x1: string; x2: string; label: string | null };
+
+// The band label is rendered centred regardless of band width, so it has to
+// degrade as the window narrows: full sentence while there's room, a terse "No
+// data" when it's tight, then nothing once even that would overlap the line.
+// Thresholds are in days (≈7px each at this chart width).
+function bandLabel(visibleDays: number): string | null {
+  if (visibleDays >= 21) return "No data for this period";
+  if (visibleDays >= 8) return "No data";
+  return null;
+}
+
+// Each deadzone span clipped to the in-window days it actually covers. As the
+// 60-day window slides forward, a span's left edge falls off and its band
+// shrinks a day at a time until it's gone — and a span with no in-window days
+// (e.g. one fully scrolled past) drops out entirely.
+function visibleBands(
+  history: DailyPoint[],
+  deadzones: Deadzone[],
+): DeadzoneBand[] {
+  const bands: DeadzoneBand[] = [];
+  for (const dz of deadzones) {
+    const days = history
+      .map((h) => h.day)
+      .filter((day) => day >= dz.start && day <= dz.end)
+      .sort();
+    if (days.length === 0) continue;
+    bands.push({
+      x1: days[0],
+      x2: days[days.length - 1],
+      label: bandLabel(days.length),
+    });
+  }
+  return bands;
+}
+
 export default function PriceChart({
   history,
   forecast,
-  deadzone,
+  deadzones,
 }: {
   history: DailyPoint[];
   forecast: ForecastPoint[];
-  deadzone: Deadzone | null;
+  deadzones: Deadzone[];
 }) {
-  const rows = buildRows(history, forecast, deadzone);
-
-  // Visible bounds of the no-data band: the first and last in-window days that
-  // fall inside the deadzone. As the 60-day window slides forward, the left
-  // edge falls off and this band shrinks a day at a time until it's gone.
-  const deadzoneDays = history
-    .map((h) => h.day)
-    .filter((day) => inDeadzone(day, deadzone))
-    .sort();
-  const deadzoneBounds =
-    deadzoneDays.length > 0
-      ? { x1: deadzoneDays[0], x2: deadzoneDays[deadzoneDays.length - 1] }
-      : null;
-
-  // The band label is rendered centred regardless of band width, so it has to
-  // degrade as the window slides and the band narrows: full sentence while
-  // there's room, a terse "No data" when it's tight, then nothing once even
-  // that would overlap the line. Thresholds are in days (≈7px each at this
-  // chart width).
-  const deadzoneLabel =
-    deadzoneDays.length >= 21
-      ? "No data for this period"
-      : deadzoneDays.length >= 8
-        ? "No data"
-        : null;
+  const rows = buildRows(history, forecast, deadzones);
+  const bands = visibleBands(history, deadzones);
 
   if (rows.length === 0) {
     return (
@@ -215,18 +228,19 @@ export default function PriceChart({
             </pattern>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-          {deadzoneBounds && (
+          {bands.map((band) => (
             <ReferenceArea
-              x1={deadzoneBounds.x1}
-              x2={deadzoneBounds.x2}
+              key={band.x1}
+              x1={band.x1}
+              x2={band.x2}
               fill="url(#deadzoneHatch)"
               fillOpacity={1}
               stroke="none"
               ifOverflow="hidden"
               label={
-                deadzoneLabel
+                band.label
                   ? {
-                      value: deadzoneLabel,
+                      value: band.label,
                       position: "center",
                       fill: "var(--chart-label)",
                       fontSize: 11,
@@ -234,7 +248,7 @@ export default function PriceChart({
                   : undefined
               }
             />
-          )}
+          ))}
           <XAxis
             dataKey="day"
             tickFormatter={formatTick}

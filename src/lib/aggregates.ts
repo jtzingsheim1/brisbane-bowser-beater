@@ -242,38 +242,111 @@ async function liveCoverageRampEnd(): Promise<string | null> {
   );
 }
 
-// The "deadzone" is the span of days we can't show a trustworthy Brisbane
-// average for. It has two parts: (1) the calendar gap between the end of the
-// CC BY backfill and the start of live ingestion (no data at all — the RPC
-// forward-fills it), and (2) the live ramp-up, during which too few stations
-// have reported live prices so the average is dominated by stale carry-forward.
-// The chart masks this span rather than drawing a misleading flat line. Returns
-// null once live coverage is healthy and has caught up to the backfill.
-async function fetchCoverageDeadzone(): Promise<Deadzone | null> {
-  const lastBackfillDay = await latestDayForSource("csv_backfill", false);
-  const firstLiveDay = await latestDayForSource("live_api", true);
-  if (!lastBackfillDay || !firstLiveDay) {
-    return null;
-  }
+// A "deadzone" is a span of days we can't show a trustworthy Brisbane average
+// for. There can be more than one, because backfill coverage isn't always
+// contiguous: e.g. QLD publishes its monthly open-data CSVs out of order, so a
+// month in the middle of our history can be missing entirely while later months
+// are present. Sources of deadzone:
+//   (1) Internal data gaps — a stretch with no events at all (a month QLD
+//       hasn't published, or a cron outage). The carry-forward RPC fills these
+//       with a dead-flat line, so we detect them as flat runs in the series
+//       (the same carry-forward signature trimDeadZone keys on in project.ts).
+//   (2) The backfill→live transition: the calendar gap between the last
+//       backfill day and the first live day, extended through the live ramp-up
+//       during which too few stations have reported for the average to be
+//       trusted (see liveCoverageRampEnd).
+// We compute both, then merge overlapping/adjacent spans. The chart masks each
+// span rather than drawing a misleading flat line across it.
 
-  let end = addUtcDays(firstLiveDay, -1);
-  const rampEnd = await liveCoverageRampEnd();
-  if (rampEnd && rampEnd > end) {
-    end = rampEnd;
-  }
+// How far back to scan for internal gaps. Comfortably wider than the chart's
+// ~60-day window so a gap's full flat run is visible (and thus detectable) even
+// when only its tail edge falls inside the rendered window.
+const DEADZONE_SCAN_DAYS = 120;
+// A run of this many days whose average doesn't move (within FLAT_EPS) is
+// carry-forward, not real data. A cross-station average never sits this flat
+// for real, so a flat run is an unambiguous "no data here" signal.
+const FLAT_RUN_DAYS = 5;
+const FLAT_EPS = 0.001; // $/L — matches project.ts; daily moves under 0.1c
 
-  const start = addUtcDays(lastBackfillDay, 1);
-  return start <= end ? { start, end } : null;
+// Maximal flat runs (carry-forward gaps) in an ascending daily series.
+function detectFlatRuns(series: DailyPoint[]): Deadzone[] {
+  const spans: Deadzone[] = [];
+  let runStart = 0;
+  const flush = (endIdx: number) => {
+    if (endIdx - runStart + 1 >= FLAT_RUN_DAYS) {
+      spans.push({ start: series[runStart].day, end: series[endIdx].day });
+    }
+  };
+  for (let i = 1; i < series.length; i++) {
+    if (Math.abs(series[i].avgPrice - series[i - 1].avgPrice) > FLAT_EPS) {
+      flush(i - 1);
+      runStart = i;
+    }
+  }
+  if (series.length > 0) flush(series.length - 1);
+  return spans;
 }
 
-const getCachedCoverageDeadzone = unstable_cache(
-  fetchCoverageDeadzone,
+// Merge overlapping or day-adjacent spans into a minimal sorted set.
+function mergeSpans(spans: Deadzone[]): Deadzone[] {
+  const sorted = [...spans].sort((a, b) => (a.start < b.start ? -1 : 1));
+  const merged: Deadzone[] = [];
+  for (const s of sorted) {
+    const last = merged[merged.length - 1];
+    // Adjacent (last.end + 1 day === s.start) counts as overlapping so two
+    // touching gaps render as one box.
+    if (last && s.start <= addUtcDays(last.end, 1)) {
+      if (s.end > last.end) last.end = s.end;
+    } else {
+      merged.push({ ...s });
+    }
+  }
+  return merged;
+}
+
+async function fetchCoverageDeadzones(): Promise<Deadzone[]> {
+  const lastBackfillDay = await latestDayForSource("csv_backfill", false);
+  if (!lastBackfillDay) {
+    return [];
+  }
+
+  const spans: Deadzone[] = [];
+
+  // (2) Backfill→live transition + ramp.
+  const firstLiveDay = await latestDayForSource("live_api", true);
+  if (firstLiveDay) {
+    let end = addUtcDays(firstLiveDay, -1);
+    const rampEnd = await liveCoverageRampEnd();
+    if (rampEnd && rampEnd > end) {
+      end = rampEnd;
+    }
+    const start = addUtcDays(lastBackfillDay, 1);
+    if (start <= end) {
+      spans.push({ start, end });
+    }
+  }
+
+  // (1) Internal flat-run gaps, scanned over a window wide enough to catch a
+  // gap's full run even when the chart only shows its edge.
+  const latestIso = await getCachedLatestEventIso();
+  const scanEnd = latestIso ? toIsoDate(new Date(latestIso)) : null;
+  if (scanEnd) {
+    const scanStart = addUtcDays(scanEnd, -DEADZONE_SCAN_DAYS);
+    const series = await getCachedDailyU91(scanStart, scanEnd);
+    spans.push(...detectFlatRuns(series));
+  }
+
+  return mergeSpans(spans);
+}
+
+const getCachedCoverageDeadzones = unstable_cache(
+  fetchCoverageDeadzones,
   // Versioned cache key — bump when the deadzone logic changes so dev/prod don't
-  // serve a stale span from the old computation.
-  ["aggregates:coverage-deadzone:v2"],
+  // serve stale spans from the old computation. v3 = multi-span + flat-run.
+  ["aggregates:coverage-deadzone:v3"],
   { revalidate: CACHE_TTL_SECONDS },
 );
 
-export async function getCoverageDeadzone(): Promise<Deadzone | null> {
-  return getCachedCoverageDeadzone();
+export async function getCoverageDeadzones(): Promise<Deadzone[]> {
+  return getCachedCoverageDeadzones();
 }

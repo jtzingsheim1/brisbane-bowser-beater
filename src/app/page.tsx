@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import {
   getBrisbaneDailyU91History,
-  getCoverageDeadzone,
+  getCoverageDeadzones,
   getLatestForecast,
 } from "@/lib/aggregates";
 import { recordVisit } from "@/lib/usage";
@@ -19,27 +19,33 @@ export default async function Home() {
   const requestHeaders = await headers();
   after(() => recordVisit(requestHeaders));
 
-  const [history, forecast, deadzone] = await Promise.all([
+  const [history, forecast, deadzones] = await Promise.all([
     getBrisbaneDailyU91History(60),
     getLatestForecast(),
-    getCoverageDeadzone(),
+    getCoverageDeadzones(),
   ]);
 
-  // Show the deadzone explainer only while the no-data band is actually on the
-  // chart — i.e. the gap still intersects the visible window. Once live data
-  // accumulates and the window slides past the gap, both the band and this note
-  // disappear together, with no manual cleanup.
-  const deadzoneVisible =
-    deadzone !== null &&
-    history.some((h) => h.day >= deadzone.start && h.day <= deadzone.end);
+  // Show the deadzone explainer only while at least one no-data band is actually
+  // on the chart — i.e. a gap still intersects the visible window. As live data
+  // accumulates and the window slides past a gap, its band (and eventually this
+  // note) disappear with no manual cleanup.
+  const deadzoneVisible = deadzones.some((d) =>
+    history.some((h) => h.day >= d.start && h.day <= d.end),
+  );
 
-  // Trustworthy observed days = those after the deadzone (post-ramp live data).
-  // While that's thin, the forecast is fit on very little real history, so we
-  // flag it as preliminary. Auto-clears once ~2 weeks of live data accrue.
+  // Trustworthy observed days = those after the *last* deadzone, i.e. genuinely
+  // recent live data — not the April backfill island that sits between the
+  // missing-month gap and the live ramp-up. While that's thin, the forecast is
+  // fit on little real recent history, so we flag it preliminary. Auto-clears
+  // once ~2 weeks of live data accrue past the final gap.
+  const lastDeadzoneEnd = deadzones.reduce<string | null>(
+    (max, d) => (max === null || d.end > max ? d.end : max),
+    null,
+  );
   const TRUSTED_DAYS_FOR_CONFIDENT_FORECAST = 14;
   const trustedObservedDays =
-    deadzone !== null
-      ? history.filter((h) => h.day > deadzone.end).length
+    lastDeadzoneEnd !== null
+      ? history.filter((h) => h.day > lastDeadzoneEnd).length
       : history.length;
   const forecastPreliminary =
     forecast.length > 0 &&
@@ -61,7 +67,7 @@ export default async function Home() {
         <PriceChart
           history={history}
           forecast={forecast}
-          deadzone={deadzone}
+          deadzones={deadzones}
         />
       </section>
 
@@ -71,13 +77,16 @@ export default async function Home() {
           <CycleEducation />
           {deadzoneVisible && (
             <Disclosure summary="About the shaded gap">
-              Our historical data (a public open-data backfill) runs to late
-              February, and our live QLD fuel API feed only reached broad
-              station coverage in late May. Until enough stations are
-              reporting, there isn&rsquo;t a reliable Brisbane-wide average to
-              show &mdash; so rather than draw a misleading line, we leave that
-              stretch blank. It fills in and slides off the chart as live data
-              accumulates.
+              We only chart a Brisbane average we can stand behind &mdash; and
+              even with two sources, one gap remains. Our primary, ongoing
+              source is the QLD Fuel Price Reporting API: we received our access
+              token in late May and began ingesting straight away, so by late
+              July the
+              whole 60-day window should be live API data. To show a full
+              history in the meantime, we backfilled the earlier stretch with the
+              same QLD open-data history we used to build the forecast model
+              &mdash; but that source hasn&rsquo;t published May yet, which is
+              the shaded gap. It closes as the live history fills in.
             </Disclosure>
           )}
           {forecastPreliminary && (
