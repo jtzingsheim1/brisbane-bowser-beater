@@ -151,3 +151,129 @@ const getCachedLatestForecast = unstable_cache(
 export async function getLatestForecast(): Promise<ForecastPoint[]> {
   return getCachedLatestForecast();
 }
+
+export type Deadzone = { start: string; end: string };
+
+function addUtcDays(day: string, delta: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return toIsoDate(d);
+}
+
+async function latestDayForSource(
+  source: "csv_backfill" | "live_api",
+  ascending: boolean,
+): Promise<string | null> {
+  const client = supabaseReadOnly();
+  const { data, error } = await client
+    .from("price_snapshots")
+    .select("transaction_date_utc")
+    .eq("fuel_name", "Unleaded")
+    .eq("data_source", source)
+    .order("transaction_date_utc", { ascending })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data?.transaction_date_utc
+    ? toIsoDate(new Date(data.transaction_date_utc as string))
+    : null;
+}
+
+// Fraction of core stations that must have reported a live price before a day's
+// average is trusted. Below this, the daily average is dominated by stale
+// carry-forward (most stations still on their pre-live value), so we treat the
+// day as no-data. NOTE: this is the ramp-up heuristic (option A). The deeper fix
+// (option B — staleness-cap carry-forward per station, so dormant/closed
+// stations age out) is tracked in PLAN.md and would supersede this.
+const LIVE_COVERAGE_THRESHOLD = 0.8;
+
+// The last day before live coverage crosses LIVE_COVERAGE_THRESHOLD — i.e. the
+// end of the "live ramp-up" during which the average can't be trusted. Returns
+// null if there's no live data; returns the latest live day if coverage has
+// never yet crossed the threshold (nothing trustworthy yet).
+async function liveCoverageRampEnd(): Promise<string | null> {
+  const client = supabaseReadOnly();
+  const { count: coreCount, error: coreError } = await client
+    .from("sites")
+    .select("*", { count: "exact", head: true })
+    .eq("state", "QLD")
+    .gte("postcode", "4000")
+    .lte("postcode", "4179");
+  if (coreError) {
+    throw coreError;
+  }
+  if (!coreCount) {
+    return null;
+  }
+
+  const { data: live, error } = await client
+    .from("price_snapshots")
+    .select("site_id, transaction_date_utc")
+    .eq("fuel_name", "Unleaded")
+    .eq("data_source", "live_api")
+    .order("transaction_date_utc", { ascending: true });
+  if (error) {
+    throw error;
+  }
+  if (!live || live.length === 0) {
+    return null;
+  }
+
+  const needed = coreCount * LIVE_COVERAGE_THRESHOLD;
+  const seen = new Set<unknown>();
+  for (const row of live) {
+    seen.add(row.site_id);
+    if (seen.size >= needed) {
+      // First day coverage is adequate → trustworthy data starts here, so the
+      // ramp (no-data) ends the day before.
+      return addUtcDays(
+        toIsoDate(new Date(row.transaction_date_utc as string)),
+        -1,
+      );
+    }
+  }
+  // Threshold never reached: no day is trustworthy yet — extend through the
+  // most recent live day.
+  return toIsoDate(
+    new Date(live[live.length - 1].transaction_date_utc as string),
+  );
+}
+
+// The "deadzone" is the span of days we can't show a trustworthy Brisbane
+// average for. It has two parts: (1) the calendar gap between the end of the
+// CC BY backfill and the start of live ingestion (no data at all — the RPC
+// forward-fills it), and (2) the live ramp-up, during which too few stations
+// have reported live prices so the average is dominated by stale carry-forward.
+// The chart masks this span rather than drawing a misleading flat line. Returns
+// null once live coverage is healthy and has caught up to the backfill.
+async function fetchCoverageDeadzone(): Promise<Deadzone | null> {
+  const lastBackfillDay = await latestDayForSource("csv_backfill", false);
+  const firstLiveDay = await latestDayForSource("live_api", true);
+  if (!lastBackfillDay || !firstLiveDay) {
+    return null;
+  }
+
+  let end = addUtcDays(firstLiveDay, -1);
+  const rampEnd = await liveCoverageRampEnd();
+  if (rampEnd && rampEnd > end) {
+    end = rampEnd;
+  }
+
+  const start = addUtcDays(lastBackfillDay, 1);
+  return start <= end ? { start, end } : null;
+}
+
+const getCachedCoverageDeadzone = unstable_cache(
+  fetchCoverageDeadzone,
+  // Versioned cache key — bump when the deadzone logic changes so dev/prod don't
+  // serve a stale span from the old computation.
+  ["aggregates:coverage-deadzone:v2"],
+  { revalidate: CACHE_TTL_SECONDS },
+);
+
+export async function getCoverageDeadzone(): Promise<Deadzone | null> {
+  return getCachedCoverageDeadzone();
+}
