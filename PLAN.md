@@ -21,6 +21,12 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 
 ---
 
+## Near-term follow-ups (after the pre-launch polish PR)
+
+- **Refresh the historical backfill from new QLD open-data CSVs.** As of 2026-05-27 the open-data portal had just published **April 2026** (March 2026 was still missing — check whether it lands too). Action: download the new month(s), re-run the `/analysis` pipeline to extend the backfill and re-fit `cycle_params.json`, then trace the knock-on effects — the chart's deadzone band (new backfill data may shrink/close the Mar–May gap), the forecast anchoring/quality (more real history feeds the fit, may clear the "preliminary" state sooner), and the daily narrative. Re-validate after import. (Source: [data.qld.gov.au](https://data.qld.gov.au/dataset/fuel-price-reporting-2026).)
+
+---
+
 ## Phase 0 outcomes (signed off)
 
 | Decision | Outcome |
@@ -229,3 +235,5 @@ Items deliberately deferred — track here so they're not lost:
 - **Interactive historical price charts** — drill into past cycles
 - **Quarterly cycle parameter re-fit** — Stage 3 of the forecast model architecture; document drift over time
 - **Real-time push from fuel API** — replace cron-pulled snapshot if the API ever supports it
+- **Staleness-cap the daily average (data quality — feeds chart AND forecast)** — the RPC (`brisbane_daily_avg_u91`) carry-forwards each station's last-known price indefinitely. Two problems: (1) during the backfill→live ramp-up, days are dominated by stale Feb prices until enough stations report — handled *cosmetically* today by the coverage-threshold deadzone (option A, ~80% cutoff landed ~24 May); (2) a **suspended/closed station** keeps contributing its frozen last price to the average forever — a small (~0.25%/station) but **permanent, accumulating** skew that the coverage filter can't catch (the station *did* report once). Fix (option B): exclude a station's price from a day's average when its latest price is older than ~N days (suggest ~21, under the cycle length), so the average reflects only currently-active stations and the forecast gets clean input. **Forecast caveat:** with a staleness cap applied *today* we'd have <`MIN_FIT_POINTS` (7) real days, so `projectForecast` would correctly return null until ~2 weeks of live coverage accrue — so the forecast pipeline should read the same staleness-capped history and the UI keeps the "forecast preliminary" state until then. Requires an RPC migration + re-validating the forecast pipeline. Until then the forecast is fit partly on the coverage-ramp artifact (the 13–23 May gradual "decline" is mostly stations flipping from stale to live, not real price movement): level anchoring is sound, cycle-phase anchoring is not.
+- **Generalise chart deadzone to any data gap** — the hatched "no data" band currently covers only the one backfill→live gap (detected via first-live vs last-backfill dates). The daily RPC (`brisbane_daily_avg_u91`) carry-forwards missing days by design, so a *future* cron outage would render as a flat line rather than a gap. To mask any gap honestly, generalise detection to **any run of ≥N days with no real snapshots** — suggest N≈5–7, since carry-forward is a sound estimate for short gaps (Brisbane prices move only ~1–3c/day) and >1 day would over-trigger. Requires a real-coverage query (the RPC hides gaps via carry-forward), returning an array of spans the chart renders as multiple bands; the backfill gap then becomes just the largest detected gap (unifies the logic). Ongoing/live outages remain covered separately by the 60-min staleness gate.
