@@ -2,7 +2,9 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Starter chip definitions. Structure is locked (see CLAUDE.md
 // "Agent → Starter chip quadrant" and SYSTEM_PROMPT). Copy/tone is the
@@ -10,40 +12,154 @@ import { useMemo, useState } from "react";
 type Chip = {
   id: "A" | "B" | "C" | "D";
   label: string;
-  hint: string;
   kickoff: string;
 };
 
+// Quadrant order is load-bearing: index maps to grid position (A top-left …
+// D bottom-right), which the axis labels rely on. Labels are plain statements
+// of the square's coordinates; the richer situation detail lives in `kickoff`
+// (what's actually sent to the agent).
 const CHIPS: Chip[] = [
   {
     id: "A",
-    label: "Clockwork commuter",
-    hint: "Same fills every week, not much give",
+    label: "Fill often, limited flexibility",
     kickoff:
       "I fill up every week on much the same days, and I can't really move when I fill. Help me get the most out of the cycle within those constraints.",
   },
   {
     id: "B",
-    label: "Regular, with options",
-    hint: "Fill often, can shift the day",
+    label: "Fill often, flexible",
     kickoff:
       "I fill pretty often — weekly-ish — but I can shift which day I do it. Help me work the cycle to my advantage.",
   },
   {
     id: "C",
-    label: "One fill, make it count",
-    hint: "Rare fills, tight timing — road trips too",
+    label: "Fill rarely, limited flexibility",
     kickoff:
       "I don't fill often, so the next one matters. Help me nail the timing and the station. (If it's for a road trip: the trip date is fixed, but I can choose when to fill beforehand.)",
   },
   {
     id: "D",
-    label: "Easy-going",
-    hint: "Light driver, plenty of slack",
+    label: "Fill rarely, flexible",
     kickoff:
       "I'm a light driver with loads of flexibility on when I fill. Help me build a fill rhythm around the cycle.",
   },
 ];
+
+// Plain-language labels for the agent's tools, so the visible tool calls read
+// as "what the planner is doing" rather than raw function names. The agentic
+// loop (decide → call tool → read live data → answer) is part of the product's
+// transparency story, so we surface it prominently rather than as a footnote.
+const TOOL_LABELS: Record<
+  string,
+  { icon: string; active: string; done: string; noun: string }
+> = {
+  get_forecast: {
+    icon: "📈",
+    active: "Reading the live forecast…",
+    done: "Read the live forecast",
+    noun: "the live forecast",
+  },
+  get_recent_history: {
+    icon: "📊",
+    active: "Checking recent Brisbane prices…",
+    done: "Checked recent Brisbane prices",
+    noun: "recent prices",
+  },
+};
+
+function formatShortDate(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  return d.toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Australia/Brisbane",
+  });
+}
+
+// A short, honest summary of what a finished tool call returned — enough to show
+// the answer is grounded in real data, without restating the whole payload.
+function toolPeek(name: string, output: unknown): string | null {
+  if (!output || typeof output !== "object") return null;
+  const o = output as Record<string, unknown>;
+  if (name === "get_forecast") {
+    if (o.status === "unavailable") return "not enabled yet";
+    const series = o.series as
+      | Array<{ day: string; predicted_price: number }>
+      | undefined;
+    if (!series?.length) return null;
+    const trough = series.reduce((lo, p) =>
+      p.predicted_price < lo.predicted_price ? p : lo,
+    );
+    return `low ~ ${formatShortDate(trough.day)}`;
+  }
+  if (name === "get_recent_history") {
+    return typeof o.days_returned === "number"
+      ? `${o.days_returned} days`
+      : null;
+  }
+  return null;
+}
+
+type ToolPart = {
+  type: string;
+  state?:
+    | "input-streaming"
+    | "input-available"
+    | "output-available"
+    | "output-error";
+  output?: unknown;
+};
+
+// The planner replies in markdown (bold, lists, the occasional table). Render
+// it so those come out formatted rather than as literal `**` / pipe characters.
+// react-markdown does not emit raw HTML, so model output can't inject markup.
+function MarkdownMessage({ text }: { text: string }) {
+  return (
+    <div className="prose prose-sm prose-zinc max-w-none dark:prose-invert prose-headings:font-semibold prose-table:text-xs">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    </div>
+  );
+}
+
+function ToolActivity({ part }: { part: ToolPart }) {
+  const name = part.type.replace(/^tool-/, "");
+  const meta = TOOL_LABELS[name] ?? {
+    icon: "🔧",
+    active: `Calling ${name}…`,
+    done: `Called ${name}`,
+    noun: name,
+  };
+  const running =
+    part.state === "input-streaming" || part.state === "input-available";
+  const errored = part.state === "output-error";
+  const peek =
+    part.state === "output-available" ? toolPeek(name, part.output) : null;
+
+  return (
+    <div className="flex items-center gap-2 rounded-md bg-zinc-100 px-2.5 py-1.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+      <span aria-hidden="true">{meta.icon}</span>
+      {running ? (
+        <>
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-400" />
+          <span>{meta.active}</span>
+        </>
+      ) : errored ? (
+        <span>
+          Couldn&rsquo;t reach {meta.noun} &mdash; answering from what I have.
+        </span>
+      ) : (
+        <>
+          <span className="text-emerald-600 dark:text-emerald-400">
+            &#10003;
+          </span>
+          <span>{meta.done}</span>
+          {peek && <span className="text-zinc-400">&middot; {peek}</span>}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function AgentChat() {
   const [input, setInput] = useState("");
@@ -51,63 +167,94 @@ export default function AgentChat() {
     () => new DefaultChatTransport({ api: "/api/agent" }),
     [],
   );
-  const { messages, sendMessage, status, error } = useChat({ transport });
+  const { messages, sendMessage, status, error, regenerate } = useChat({
+    transport,
+  });
 
   const isBusy = status === "submitted" || status === "streaming";
   const showChips = messages.length === 0;
 
+  // Keep the latest output in view as the plan streams in — but only if the
+  // user is already near the bottom, so we don't yank them back down while
+  // they're scrolling up to re-read.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [messages, status]);
+
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <div className="max-h-[480px] space-y-4 overflow-y-auto px-5 py-4">
+      <div
+        ref={scrollRef}
+        className="max-h-[480px] space-y-4 overflow-y-auto px-5 py-4"
+      >
         {showChips && (
           <div>
             <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
-              Pick the option that best describes your situation, or just
-              describe it in your own words below.
+              Which sounds most like you? Tap a square to brief the agent
+              &mdash; or just describe your situation.
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {CHIPS.map((chip) => (
-                <button
-                  key={chip.id}
-                  type="button"
-                  disabled={isBusy}
-                  onClick={() => sendMessage({ text: chip.kickoff })}
-                  className="rounded-md border border-zinc-200 bg-white px-4 py-3 text-left transition-colors hover:border-zinc-400 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
-                >
-                  <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+            {/* Quadrant: columns = flexibility (locked in → flexible), rows =
+                frequency (fill often → rarely). The axis cues let grid position
+                carry the meaning, so the chips themselves can stay terse. */}
+            <div className="grid grid-cols-[1.25rem_1fr] gap-x-1.5">
+              <div aria-hidden="true" />
+              <div
+                aria-hidden="true"
+                className="mb-1 flex items-center justify-between px-1 text-[11px] uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
+              >
+                <span>&larr; limited flexibility</span>
+                <span>flexible &rarr;</span>
+              </div>
+              <div
+                aria-hidden="true"
+                className="flex items-center justify-center"
+              >
+                <span className="text-[11px] uppercase tracking-wide text-zinc-600 [writing-mode:vertical-rl] dark:text-zinc-300">
+                  fill often &rarr; rarely
+                </span>
+              </div>
+              {/* Tint deepens toward the top-right (often + flexible) using
+                  the chart's band colour, so the grid reads as a "map" at a
+                  glance. Chips are translucent cards floating on it. */}
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-gradient-to-tr from-indigo-50 to-indigo-200/70 p-2 dark:from-indigo-950/40 dark:to-indigo-900/30">
+                {CHIPS.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => sendMessage({ text: chip.kickoff })}
+                    className="rounded-md border border-white/70 bg-white/75 px-4 py-4 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-indigo-300 hover:bg-white disabled:opacity-50 dark:border-zinc-700/50 dark:bg-zinc-900/60 dark:text-zinc-100 dark:hover:border-indigo-500/60 dark:hover:bg-zinc-900"
+                  >
                     {chip.label}
-                  </div>
-                  <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    {chip.hint}
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
         {messages.map((m) => (
           <div key={m.id} className="text-sm">
             <div className="mb-1 font-medium text-zinc-600 dark:text-zinc-400">
-              {m.role === "user" ? "You" : "Planner"}
+              {m.role === "user" ? "You" : "AI agent"}
             </div>
             <div className="space-y-2 leading-6 text-zinc-900 dark:text-zinc-100">
               {m.parts.map((p, i) => {
                 if (p.type === "text") {
-                  return (
+                  return m.role === "assistant" ? (
+                    <MarkdownMessage key={i} text={p.text} />
+                  ) : (
                     <div key={i} className="whitespace-pre-wrap">
                       {p.text}
                     </div>
                   );
                 }
                 if (typeof p.type === "string" && p.type.startsWith("tool-")) {
-                  const name = p.type.replace(/^tool-/, "");
                   return (
-                    <div
-                      key={i}
-                      className="text-xs italic text-zinc-500 dark:text-zinc-400"
-                    >
-                      &middot; called {name}
-                    </div>
+                    <ToolActivity key={i} part={p as unknown as ToolPart} />
                   );
                 }
                 return null;
@@ -117,7 +264,14 @@ export default function AgentChat() {
         ))}
         {error && (
           <div className="text-sm text-red-600 dark:text-red-400">
-            Something went wrong. The planner may not be configured yet.
+            Something went wrong generating your plan.{" "}
+            <button
+              type="button"
+              onClick={() => regenerate()}
+              className="font-medium underline underline-offset-2 hover:no-underline"
+            >
+              Try again
+            </button>
           </div>
         )}
       </div>
@@ -131,9 +285,9 @@ export default function AgentChat() {
         }}
       >
         <input
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          className="flex-1 rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm text-zinc-700 placeholder:text-zinc-400 dark:border-zinc-800 dark:text-zinc-200"
           value={input}
-          placeholder="Describe your situation…"
+          placeholder="Or describe your situation in your own words…"
           onChange={(e) => setInput(e.currentTarget.value)}
           disabled={isBusy}
         />
