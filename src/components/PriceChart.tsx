@@ -197,19 +197,24 @@ export default function PriceChart({
               height="6"
               patternTransform="rotate(45)"
             >
-              <rect width="6" height="6" fill="#71717a" fillOpacity={0.06} />
+              <rect
+                width="6"
+                height="6"
+                fill="var(--chart-hatch)"
+                fillOpacity={0.06}
+              />
               <line
                 x1="0"
                 y1="0"
                 x2="0"
                 y2="6"
-                stroke="#71717a"
+                stroke="var(--chart-hatch)"
                 strokeOpacity={0.25}
                 strokeWidth={1.5}
               />
             </pattern>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
           {deadzoneBounds && (
             <ReferenceArea
               x1={deadzoneBounds.x1}
@@ -223,7 +228,7 @@ export default function PriceChart({
                   ? {
                       value: deadzoneLabel,
                       position: "center",
-                      fill: "#a1a1aa",
+                      fill: "var(--chart-label)",
                       fontSize: 11,
                     }
                   : undefined
@@ -234,13 +239,13 @@ export default function PriceChart({
             dataKey="day"
             tickFormatter={formatTick}
             minTickGap={32}
-            stroke="#71717a"
+            stroke="var(--chart-axis)"
             fontSize={12}
           />
           <YAxis
             tickFormatter={formatPrice}
             domain={["auto", "auto"]}
-            stroke="#71717a"
+            stroke="var(--chart-axis)"
             fontSize={12}
             width={56}
           />
@@ -248,7 +253,7 @@ export default function PriceChart({
           <Area
             type="monotone"
             dataKey="band"
-            fill="#c7d2fe"
+            fill="var(--chart-band)"
             fillOpacity={0.45}
             stroke="none"
             name="Forecast range"
@@ -257,7 +262,7 @@ export default function PriceChart({
           <Line
             type="monotone"
             dataKey="observed"
-            stroke="#1e40af"
+            stroke="var(--chart-line)"
             strokeWidth={2}
             dot={false}
             name="Observed (Brisbane average)"
@@ -267,7 +272,7 @@ export default function PriceChart({
           <Line
             type="monotone"
             dataKey="forecast"
-            stroke="#1e40af"
+            stroke="var(--chart-line)"
             strokeWidth={2}
             strokeDasharray="5 4"
             dot={false}

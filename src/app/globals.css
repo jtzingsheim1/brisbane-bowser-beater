@@ -4,6 +4,18 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Chart palette. Recharts renders these as raw SVG fill/stroke attributes,
+     so Tailwind's `dark:` variants can't reach them — they're driven here via
+     CSS variables that switch under prefers-color-scheme instead. The dark
+     values lift the price line off near-black and keep the grid/hatch subtle
+     rather than glaring. */
+  --chart-grid: #e4e4e7; /* zinc-200 */
+  --chart-axis: #71717a; /* zinc-500 */
+  --chart-label: #a1a1aa; /* zinc-400 */
+  --chart-hatch: #71717a; /* zinc-500 */
+  --chart-band: #c7d2fe; /* indigo-200 */
+  --chart-line: #1e40af; /* blue-800 */
 }
 
 @theme inline {
@@ -17,6 +29,13 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --chart-grid: #27272a; /* zinc-800 — visible but not glaring on black */
+    --chart-axis: #a1a1aa; /* zinc-400 — lift axis lines/ticks off black */
+    --chart-label: #a1a1aa; /* zinc-400 */
+    --chart-hatch: #d4d4d8; /* zinc-300 — hatch needs to read on black */
+    --chart-band: #6366f1; /* indigo-500 — translucent wash stays visible */
+    --chart-line: #93c5fd; /* blue-300 — legible price line on near-black */
   }
 }
 
