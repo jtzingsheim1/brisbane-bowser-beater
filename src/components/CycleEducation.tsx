@@ -1,13 +1,9 @@
+import Disclosure from "./Disclosure";
+
 export default function CycleEducation() {
   return (
-    <section
-      aria-label="About the Brisbane fuel cycle"
-      className="text-base leading-7 text-zinc-700 dark:text-zinc-300"
-    >
-      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-        Why timing matters
-      </h2>
-      <div className="mt-3 space-y-3">
+    <Disclosure summary="Why timing matters — how the Brisbane cycle works">
+      <div className="space-y-3">
         <p>
           Brisbane retail fuel prices move in recurring cycles &mdash; a
           pattern seen across other Australian capital cities too. The cycle is
@@ -31,7 +27,7 @@ export default function CycleEducation() {
             href="https://www.accc.gov.au/by-industry/petrol-and-fuel/fuel-and-petrol-monitoring"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-zinc-950 underline dark:text-zinc-50"
+            className="font-medium text-zinc-700 underline dark:text-zinc-300"
           >
             fuel and petrol monitoring reports
           </a>{" "}
@@ -40,6 +36,6 @@ export default function CycleEducation() {
           accordingly.
         </p>
       </div>
-    </section>
+    </Disclosure>
   );
 }
