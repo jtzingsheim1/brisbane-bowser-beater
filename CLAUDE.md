@@ -69,8 +69,10 @@ The agent is free to reference the chart in its reasoning and answer chart-relat
 
 | | **Locked in** | **Has wiggle room** |
 |---|---|---|
-| **Frequent (≥ weekly)** | A: Routine commuter, same fills every week | B: Frequent filler with options to shift |
-| **Infrequent (< weekly)** | C: Light driver, tight constraints when fuel is needed | D: Light driver with lots of slack |
+| **Frequent (≈ weekly or more)** | A: Routine commuter, same fills every week | B: Frequent filler with options to shift |
+| **Infrequent (≈ fortnightly or less)** | C: Light driver, tight constraints when fuel is needed | D: Light driver with lots of slack |
+
+**Frequency split is anchored at ~fortnightly**, the estimated median Brisbane fill interval (back-of-envelope: ~12,000 km/yr ÷ ~425 km effective range per fill ≈ 28 fills/yr ≈ every ~13 days). Splitting there — rather than at "weekly" — keeps the four cells as four roughly equal groups, and gives users a concrete anchor ("weekly or more" vs "every 2+ weeks") instead of the ambiguous "often". The flexibility axis can't be measured, so it's split by a relatable behavioural test ("could you move your next fill by 2–3 days?"). UI chip labels and the agent system prompt both reflect this anchoring; re-confirm if the median estimate is ever revised with real data.
 
 What the agent does in each cell:
 - **A**: Optimise within tight constraints. Shift the weekly fill day by 1–2 days; advise which weeks to grit teeth and pay peak.

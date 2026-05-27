@@ -22,27 +22,27 @@ type Chip = {
 const CHIPS: Chip[] = [
   {
     id: "A",
-    label: "Fill often, limited flexibility",
+    label: "Weekly or more, fixed routine",
     kickoff:
-      "I fill up every week on much the same days, and I can't really move when I fill. Help me get the most out of the cycle within those constraints.",
+      "I fill up about weekly, on much the same days, and I can't really shift when. Help me get the most out of the cycle within those constraints.",
   },
   {
     id: "B",
-    label: "Fill often, flexible",
+    label: "Weekly or more, flexible",
     kickoff:
-      "I fill pretty often — weekly-ish — but I can shift which day I do it. Help me work the cycle to my advantage.",
+      "I fill up about weekly, but I can move the day by a few days either way. Help me work the cycle to my advantage.",
   },
   {
     id: "C",
-    label: "Fill rarely, limited flexibility",
+    label: "Every 2+ weeks, fixed routine",
     kickoff:
-      "I don't fill often, so the next one matters. Help me nail the timing and the station. (If it's for a road trip: the trip date is fixed, but I can choose when to fill beforehand.)",
+      "I only fill up every couple of weeks or so, so the next one matters — and I can't easily shift its timing. Help me nail the timing and the station. (If it's for a road trip: the trip date is fixed, but I can choose when to fill beforehand.)",
   },
   {
     id: "D",
-    label: "Fill rarely, flexible",
+    label: "Every 2+ weeks, flexible",
     kickoff:
-      "I'm a light driver with loads of flexibility on when I fill. Help me build a fill rhythm around the cycle.",
+      "I fill up every couple of weeks at most, and I've got plenty of latitude on when. Help me build a fill rhythm around the cycle.",
   },
 ];
 
@@ -197,16 +197,18 @@ export default function AgentChat() {
               Which sounds most like you? Tap a square to brief the agent
               &mdash; or just describe your situation.
             </p>
-            {/* Quadrant: columns = flexibility (locked in → flexible), rows =
-                frequency (fill often → rarely). The axis cues let grid position
-                carry the meaning, so the chips themselves can stay terse. */}
+            {/* Quadrant: columns = flexibility (fixed routine → flexible),
+                rows = frequency (weekly+ → every 2+ weeks). The split sits at
+                roughly fortnightly — the estimated median Brisbane fill interval
+                — so the four cells land on four roughly equal groups. The axis
+                cues reinforce what each chip already states. */}
             <div className="grid grid-cols-[1.25rem_1fr] gap-x-1.5">
               <div aria-hidden="true" />
               <div
                 aria-hidden="true"
                 className="mb-1 flex items-center justify-between px-1 text-[11px] uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
               >
-                <span>&larr; limited flexibility</span>
+                <span>&larr; fixed routine</span>
                 <span>flexible &rarr;</span>
               </div>
               <div
@@ -214,7 +216,7 @@ export default function AgentChat() {
                 className="flex items-center justify-center"
               >
                 <span className="text-[11px] uppercase tracking-wide text-zinc-600 [writing-mode:vertical-rl] dark:text-zinc-300">
-                  fill often &rarr; rarely
+                  weekly+ &rarr; every 2+ weeks
                 </span>
               </div>
               {/* Tint deepens toward the top-right (often + flexible) using
