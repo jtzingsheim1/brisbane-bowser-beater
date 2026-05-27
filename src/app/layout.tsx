@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { connection } from "next/server";
 import Footer from "@/components/Footer";
 import MaintenanceNotice from "@/components/MaintenanceNotice";
+import SiteHeader from "@/components/SiteHeader";
 import { isKillSwitchEngaged, isStale } from "@/lib/freshness";
 import "./globals.css";
 
@@ -57,6 +58,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <SiteHeader />
         <div className="flex flex-1 flex-col">
           {maintenance ? <MaintenanceNotice /> : children}
         </div>
