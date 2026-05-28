@@ -4,6 +4,8 @@ A single-page web app for Brisbane drivers. It combines live fuel-price data
 with an AI fuel strategist to help you time your fills around Brisbane's
 recurring retail fuel-price cycle.
 
+**Live site:** [brisbane-bowser-beater.vercel.app](https://brisbane-bowser-beater.vercel.app)
+
 > **General information only.** Fuel prices and forecasts are estimates —
 > verify before you fill.
 

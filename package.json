@@ -40,7 +40,6 @@
     "csv-parse": "^6.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "supabase": "^2.101.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
     "typescript": "^6",

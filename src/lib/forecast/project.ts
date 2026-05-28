@@ -259,5 +259,3 @@ export function projectForecast(
     rows,
   };
 }
-
-export { HORIZON_DAYS };

@@ -203,7 +203,7 @@ Realistic target: under $20/month worst case, under $10 with caching.
 
 The project should be safe to launch, walk away from, and take down without monitoring. Three layers:
 
-**1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (initial setting: 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails.
+**1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (default 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The threshold is env-tunable via `BBB_STALENESS_MINUTES` (positive integer, clamped to 24 h max) — right-sized for the actual product, which is a daily aggregate average where a few hours of intraday lag doesn't change what's displayed. Set to a higher value (e.g. 360–720) to ride out GitHub Actions scheduler lag; leave unset for the conservative default. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails.
 
 **2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Two clicks in the Vercel dashboard, no code change, no race conditions.
 

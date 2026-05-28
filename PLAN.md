@@ -13,11 +13,11 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 2 — Data ingestion + forecast model | ✅ Complete (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, TS daily projection, chunk-5 figure adoption, live 30-min GitHub Actions ingestion, daily forecast generation, and the daily narrative generator all landed — the chart, forecast line, and narrative all run on current data) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
 | Phase 4 — Agent layer | ✅ Complete (API route, two tools, system prompt, streaming chat UI, 2×2 starter chip grid, chip copy polish, and plan caching by `(situation_hash, day)` all shipped) |
-| Phase 5 — Cost protection + off-switch | ✅ Code complete (off-switch, input caps, max tokens/steps, per-IP rate limit (Upstash, graceful), `CRON_SECRET` on the forecast route, BYO-key header, and `usage_monthly_visitors` LUL 4.8 counting all landed; deploy-time config — Anthropic spend cap, Upstash + `USAGE_SALT` provisioning, env-var placement — happens at Phase 8) |
+| Phase 5 — Cost protection + off-switch | ✅ Complete (off-switch, input caps, max tokens/steps, per-IP rate limit (Upstash, graceful), `CRON_SECRET` on the forecast route, BYO-key header, and `usage_monthly_visitors` LUL 4.8 counting all landed; deploy-time config — Anthropic spend cap, Upstash + `USAGE_SALT` provisioning, env-var placement — wired up at Phase 8) |
 | Phase 6 — Abuse audit | ✅ Complete (`docs/abuse-audit.md` — every cost/abuse vector enumerated with its defence + a pre-deploy checklist) |
 | Phase 7 — Public docs | ✅ Complete (README rewritten in public voice; `/about/data` attribution page shipped in Phase 3) |
-| Phase 8 — Deploy + verify | Pending — runbook ready (`docs/deploy-runbook.md`); needs Vercel hookup + dashboard config |
-| Phase 9 — Wrap | Pending |
+| Phase 8 — Deploy + verify | ✅ Complete (live at https://brisbane-bowser-beater.vercel.app; Vercel project + Upstash Marketplace integration + all secrets provisioned; defence stack verified live — rate-limit 429, cron 401, agent guardrail, kill-switch toggle, paused/live page rendering) |
+| Phase 9 — Wrap | In progress (post-launch audit completed; audit-wrap PR addresses doc drift + small hardening + dead-code; outstanding follow-ups tracked in this file) |
 
 ---
 
@@ -26,6 +26,55 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 - **Refresh the historical backfill from new QLD open-data CSVs.** As of 2026-05-27 the open-data portal had just published **April 2026** (March 2026 was still missing — check whether it lands too). April has since been loaded into `price_snapshots` for **chart display only** (it fills part of the old grey gap; see the next bullet); the cycle model deliberately was *not* re-fit across the missing-March gap. Remaining action: when **March** lands, download it, re-run the `/analysis` pipeline to extend the backfill and re-fit `cycle_params.json`, then trace the knock-on effects — the chart's deadzone bands, the forecast anchoring/quality (more real history may clear the "preliminary" state sooner), and the daily narrative. Re-validate after import. (Source: [data.qld.gov.au](https://data.qld.gov.au/dataset/fuel-price-reporting-2026).)
 
 - **Interleave the May 2026 CSV when it drops, then retire the gap.** The current shaded May gap exists because (a) QLD hasn't published the May open-data CSV yet, and (b) our live changes-only API feed only began in late May, so coverage is still building. When the **May CSV** is published it will give full retroactive May coverage. One-time exercise: backfill it into `price_snapshots` (`data_source='csv_backfill'`) via `scripts/backfill-csv.mjs`, mind the overlap with the live-API rows already covering late May (the PK is `site_id,fuel_name,transaction_date_utc` — upsert is safe, but sanity-check the seam where CSV meets live so we don't double-count or leave a one-day hole), and confirm the multi-span deadzone collapses. After this seam is bridged once, **all ongoing data is live API** — no more monthly CSV interleaves needed.
+
+---
+
+## Post-launch audit follow-ups (parked)
+
+Six specialist reviewers (security, deployment-config / architect, database, code-quality, refactor-cleaner, docs+tests) plus direct GitHub-state checks audited the codebase + deployment on 2026-05-28 right after Phase 8 went live. Overall verdict: ship-quality. The quick wins landed in **PR #46** (doc drift, dead-code, HSTS, `BBB_STALENESS_MINUTES` clamp). Everything below was deliberately parked — not blocking, but recorded so the audit work isn't lost.
+
+Severity columns reflect the audit lanes' own ratings. Effort: S = minutes, M = ~1 hr, L = several hours.
+
+### Worth doing soon (S effort, real-but-small risks)
+
+- **`CRON_SECRET` timing-safe comparison.** `src/app/api/cron/forecast/route.ts:22` uses plain `===` against the bearer token. Replace with `crypto.timingSafeEqual` on fixed-length `Buffer`s (~3 lines + import). Theoretical timing-oracle attack only — bounded blast radius (idempotent DB writes, no LLM spend), but the fix is trivial. (Security lane, Low.)
+- **Add `analyze` (CodeQL) as a required branch-protection check on `main`.** Currently only `check` is required, so CodeQL runs on PRs but doesn't block merges. One click in repo settings → Branches → branch protection rule. (Direct GitHub-state check.)
+- **Dependabot postcss alert (GHSA-qx2v-qp2m-jg93, medium).** Transitive dep via Next.js, build-time only, no user CSS in the pipeline → no practical impact. Don't `npm audit fix --force` (would downgrade Next). Leave open until Next.js publishes a patched release; re-check after each Next 16.x bump.
+- **Architect 30-item dashboard verification checklist (beyond the 7-item shortlist Justin walked).** The lower-blast-radius items are still worth glancing at when time allows (e.g. V13 production-branch=main, V15 deployment-protection off, S5/S6 Supabase project not paused, A6 no orphaned dev Anthropic keys). Full list lived in the audit lane output (this transcript) — also re-derivable by re-running the architect agent against the codebase.
+
+### Growth-cliff / structural (M effort each, weeks-to-months horizon)
+
+- **`liveCoverageRampEnd` rewrite to SQL aggregation.** *Independently flagged by code-quality (High) and database (Medium) lanes.* `src/lib/aggregates.ts:212–242` fetches every `data_source='live_api'` row into Node and walks them client-side to find the day 80% of stations were live-reporting. Safe today (small live data) but becomes expensive *and* algorithmically wrong as data accumulates — sites with backdated `transaction_date_utc` can trigger an early threshold-cross. Correct shape: a single per-day SQL aggregation that returns one date. Also cache with `unstable_cache`.
+- **`brisbane_daily_avg_u91` hardening.** Two one-migration fixes: (a) add `SET search_path = public, pg_catalog` to the function signature (schema-injection defence-in-depth, even though anon has no DDL); (b) add a date-range guard at the top of the body (`if end_date - start_date > 365 then raise`) so an anon caller can't request 2000–2099. (Database lane, Medium ×2.)
+- **`forecasts` covering index.** As the table grows, the latest-batch lookup will heap-fetch ~30 rows per request. `CREATE INDEX forecasts_batch_covering_idx ON forecasts (fuel_name, region, generated_at DESC) INCLUDE (forecast_for_date, predicted_price, band_low, band_high);` — supersedes the current `forecasts_recent_idx`. (Database lane, Medium.)
+
+### Critical-path test gaps (mostly S each)
+
+The 24-test suite covers deterministic forecast logic well but skips the cost / licence / privacy surfaces. **The two biggest code changes shipped on 2026-05-28 have zero direct tests.** Priority order (highest first):
+
+1. **`freshness.ts` env-parse + clamp**. New `BBB_STALENESS_MINUTES` path (default 60 → valid positive override → invalid `NaN`/`0`/negative/empty → fallback → `>1440` → clamp). Off-switch / LUL gate; one regression flips the site live or paused unintentionally.
+2. **`rate-limit.ts` env resolution**. `UPSTASH_*` set wins, `KV_*` set, both set (UPSTASH wins), neither set → null limiter. Today's KV_* fallback is the highest-risk change of the day. Requires `vi.resetModules` + dynamic import (module-level memoisation).
+3. **Cron route `authorized()` matrix**: secret unset → open, header missing → 401, wrong scheme → 401, correct `Bearer X` → ok. Extract to exported helper for testability.
+4. **Agent route input validation**: empty messages, >20 messages, >16k char total, malformed JSON, malformed `x-anthropic-key` shape. The cost-bounding promises in `docs/abuse-audit.md` live entirely in these branches.
+5. **`usage.getClientIp` header precedence**: `x-vercel-forwarded-for` > `x-real-ip` > `x-forwarded-for`, comma-split, trim. Privacy-pane claim relies on this; spoofable-header ordering matters.
+6. **`forecast/params.validate`**: schema_version mismatch, mismatched array lengths, non-positive `period_days`/`amplitude_dollars`/`peak_phase` (also add a `peak_phase ∈ [0,1]` check — `params.ts:26-29` is missing it).
+7. **Install `@vitest/coverage-v8`** so `npm test -- --coverage` works — unblocks future quantitative tracking.
+
+### Backlog / consider later (mostly Low / nit)
+
+- **Content Security Policy header** in `next.config.ts`. XSS surface is narrow today (`react-markdown` uses React elements, no `dangerouslySetInnerHTML`, no user-supplied HTML), but CSP is best-practice defence-in-depth. Starter policy in security-lane finding 4. M effort to do right (with proper Tailwind/Next handling).
+- **Plan-cache `hashSituation` drops tool-call detail.** `src/lib/agent/plan-cache.ts:20-23` maps non-text parts to a `[tool-call]` placeholder, so two multi-turn conversations differing only in tool calls hash the same. False-positive risk for multi-turn cache hits (intended hot path is first-turn chip kickoffs, which are unaffected). Either include tool details in the canonical string, or document the scope narrowing in a code comment.
+- **`cachedPlanResponse` transparency.** Cache-hit replays emit a single text blob with no tool-call activity chips, so a user sees no signal distinguishing a live response from a cached one — slight honesty gap vs the "visible tool calls" transparency story. Either add a `*(Using a saved plan from earlier today)*` prefix, or note caching in the privacy pane copy. (Code-quality, Medium UX.)
+- **Supabase client singleton.** `src/lib/supabase/server.ts` creates a fresh client per call; on a cold-start render with cache miss, up to five new clients are constructed. Switch to module-level lazy singleton.
+- **`AgentChat.tsx:247` uses array-index keys** for streaming message parts. Stable today (streaming only appends), brittle to future part-ordering changes. Use a stable key like `${p.type}-${i}`.
+- **`forecasts` retention policy.** ~10,800 rows/year accumulating with no purge. Document growth in a comment and add a quarterly `DELETE WHERE generated_at < now() - interval '6 months'` step. (Database lane, Low.)
+- **`agent_plans` retention.** Similar shape — ~20k chars per row × cache-hit count over time. Add `DELETE FROM agent_plans WHERE plan_date < current_date - 30` as a cron step. (Database lane, Nit.)
+- **`usage_monthly_visitors.visitor_hash` `CHECK (length = 32)`** + update column comment to note 128-bit truncation (vs the comment's implied 256-bit). One-migration nit. (Database lane, Nit.)
+- **Consolidate `readEnv` + `batchUpsert` in `scripts/backfill-csv.mjs`** with the versions in `scripts/lib/qld-api.mjs`. Currently duplicated — `backfill-csv.mjs` was self-contained from before `qld-api.mjs` was extracted. (Refactor-cleaner, investigate-before-removing.)
+- **In-place mutation in `mergeSpans`** at `src/lib/aggregates.ts:299` (`last.end = s.end`). Local copy, no caller-visible effect, but conflicts with the immutability preference in CLAUDE.md. Replace with `merged[merged.length - 1] = { ...last, end: s.end }`. (Code-quality, Low.)
+- **`getClientIp` comment**: clarify that fallbacks (`x-real-ip`, `x-forwarded-for`) are client-spoofable and only used in non-Vercel envs. (Security lane, Low.)
+- **`backfill-csv.mjs` `parseDateUtc` doesn't validate calendar dates** (e.g. accepts `32/01/2026`). One-shot script against a government CSV, very low real risk. Round-trip validate or skip-with-warning. (Code-quality, Low.)
+- **Stale references cleanup.** `PLAN.md` "Likely next-session entry points" section is now mostly obsolete (it talks about Phase 8 as "remaining gate"). `CLAUDE.md` rate-limit references (around the Phase 5 row + tech-stack table) still mention only `UPSTASH_REDIS_REST_*`. Worth a sweep when next touching the doc. (Docs lane, Medium drift.)
 
 ---
 

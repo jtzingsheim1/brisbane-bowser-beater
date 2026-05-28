@@ -13,9 +13,13 @@ needs a code change.
 - **Anthropic spend cap** — console → Billing → set a hard monthly cap. *This is
   the ultimate cost backstop; do not skip.*
 - **Upstash Redis** — add via the Vercel Marketplace (free tier). It injects
-  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. **Gate: provision before
-  any public sharing** — without it the per-IP rate limit is OFF and the
-  Anthropic spend cap is the only backstop against agent abuse.
+  five env vars; the limiter uses `KV_REST_API_URL` / `KV_REST_API_TOKEN` (the
+  REST pair, not the redis:// `KV_URL`/`REDIS_URL`, and not the read-only
+  token). The limiter also accepts the native `UPSTASH_REDIS_REST_URL` /
+  `UPSTASH_REDIS_REST_TOKEN` names as a fallback, so manual provisioning works
+  too. **Gate: provision before any public sharing** — without it the per-IP
+  rate limit is OFF and the Anthropic spend cap is the only backstop against
+  agent abuse.
 - **Generate secrets** — `openssl rand -hex 32` twice, for `CRON_SECRET` and
   `USAGE_SALT`.
 
@@ -31,8 +35,8 @@ needs a code change.
 | `ANTHROPIC_API_KEY` | ✅ | the agent; 503s without it |
 | `USAGE_SALT` | ✅ | enables LUL 4.8 counting; no-op without |
 | `CRON_SECRET` | ✅ | **set it** — without it `/api/cron/forecast` is open to anyone (the GH Actions jobs write straight to Supabase and don't use this route, but the public endpoint still exists) |
-| `UPSTASH_REDIS_REST_URL` | ◻ | from Upstash; enables rate limit |
-| `UPSTASH_REDIS_REST_TOKEN` | ◻ | from Upstash |
+| `KV_REST_API_URL` | ◻ | auto-injected by the Vercel Upstash Marketplace integration; the limiter reads this (or `UPSTASH_REDIS_REST_URL` as fallback) |
+| `KV_REST_API_TOKEN` | ◻ | auto-injected; the read-write token. The limiter writes counters, so the read-only token won't work |
 | `BBB_PUBLIC` | ✅ | **leave `false` for now** — see step 4 |
 | `BBB_STALENESS_MINUTES` | ◻ | optional override for the staleness gate (default 60). Raise it (e.g. `360`) to ride out GitHub Actions cron lag — the chart shows a *daily* aggregate, so hours of intraday lag don't change what's displayed. Set very high to effectively disable the gate. |
 

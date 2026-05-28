@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import { supabaseReadOnly } from "@/lib/supabase/server";
 
 const FALLBACK_THRESHOLD_MINUTES = 60;
+const MAX_THRESHOLD_MINUTES = 1440; // 24 h — beyond this, "stale" is meaningless
 const CACHE_TTL_SECONDS = 60;
 
 // Staleness threshold in minutes, tunable via the BBB_STALENESS_MINUTES env var
@@ -10,10 +11,13 @@ const CACHE_TTL_SECONDS = 60;
 // average, so a few hours of intraday lag — e.g. from GitHub Actions cron
 // delays — doesn't materially change what's displayed; the 60-minute default
 // was sized for live per-station prices we don't actually show. Set it high to
-// ride out scheduler lag. Falls back to 60 when unset or invalid.
+// ride out scheduler lag. Falls back to 60 when unset or invalid; clamped to
+// MAX_THRESHOLD_MINUTES to prevent footguns (a pathological value like 1e308
+// would silently disable the gate entirely, contradicting LUL 2.3 intent).
 function configuredThresholdMinutes(): number {
   const raw = Number(process.env.BBB_STALENESS_MINUTES);
-  return Number.isFinite(raw) && raw > 0 ? raw : FALLBACK_THRESHOLD_MINUTES;
+  if (!Number.isFinite(raw) || raw <= 0) return FALLBACK_THRESHOLD_MINUTES;
+  return Math.min(raw, MAX_THRESHOLD_MINUTES);
 }
 
 async function fetchLatestIngestedAt(): Promise<Date | null> {
@@ -46,12 +50,12 @@ const getCachedLatestIso = unstable_cache(
   { revalidate: CACHE_TTL_SECONDS },
 );
 
-export async function getLatestIngestedAt(): Promise<Date | null> {
+async function getLatestIngestedAt(): Promise<Date | null> {
   const iso = await getCachedLatestIso();
   return iso ? new Date(iso) : null;
 }
 
-export async function getDataAgeMinutes(): Promise<number | null> {
+async function getDataAgeMinutes(): Promise<number | null> {
   const latest = await getLatestIngestedAt();
   if (!latest) {
     return null;
