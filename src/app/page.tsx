@@ -59,7 +59,7 @@ export default async function Home() {
         </h1>
         <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
           Brisbane area U91 daily average. Past two months observed, plus a
-          forward-looking forecast when one&rsquo;s available.
+          forward-looking forecast.
         </p>
       </header>
 
@@ -93,7 +93,12 @@ export default async function Home() {
             <Disclosure summary="Forecast is preliminary">
               We only began collecting live Brisbane prices in May, so it&rsquo;s
               working from limited recent history and will sharpen as more
-              accumulates. Treat it as an early estimate, not a firm projection.
+              accumulates. Recent disruption across fuel markets has also
+              unsettled the long-standing price cycle the model is built on
+              &mdash; and when that underlying rhythm shifts, a model trained on
+              past cycles can&rsquo;t fully keep pace with it. For the next few
+              weeks especially, treat the forecast as an early estimate, not a
+              firm projection.
             </Disclosure>
           )}
         </div>

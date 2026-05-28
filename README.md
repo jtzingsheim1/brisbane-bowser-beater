@@ -158,5 +158,5 @@ Deliberately out of MVP scope, tracked for later:
 General information only; fuel prices and forecasts are estimates — verify
 before you fill. Data © the State of Queensland (Fuel Price Reporting);
 historical CSVs licensed CC BY 4.0. This project is an independent tool and is
-not affiliated with or endorsed by the Queensland Government or any fuel
-retailer.
+not affiliated with or endorsed by the Queensland Government, the ACCC, or any
+fuel retailer.

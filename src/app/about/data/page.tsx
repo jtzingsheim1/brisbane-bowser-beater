@@ -60,6 +60,11 @@ export default function AboutDataPage() {
           We display the Brisbane area average only. We don&rsquo;t currently
           show per-station prices on this site.
         </p>
+        <p>
+          This is an independent tool. It is not affiliated with or endorsed by
+          the Queensland Government, the ACCC, or any fuel retailer &mdash; we
+          simply build on the open and published data they make available.
+        </p>
       </div>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-black dark:text-zinc-50">
