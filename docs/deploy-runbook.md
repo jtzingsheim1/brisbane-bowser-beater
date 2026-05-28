@@ -34,6 +34,7 @@ needs a code change.
 | `UPSTASH_REDIS_REST_URL` | ◻ | from Upstash; enables rate limit |
 | `UPSTASH_REDIS_REST_TOKEN` | ◻ | from Upstash |
 | `BBB_PUBLIC` | ✅ | **leave `false` for now** — see step 4 |
+| `BBB_STALENESS_MINUTES` | ◻ | optional override for the staleness gate (default 60). Raise it (e.g. `360`) to ride out GitHub Actions cron lag — the chart shows a *daily* aggregate, so hours of intraday lag don't change what's displayed. Set very high to effectively disable the gate. |
 
 - Deploy.
 

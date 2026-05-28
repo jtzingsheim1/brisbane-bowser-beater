@@ -1,8 +1,20 @@
 import { unstable_cache } from "next/cache";
 import { supabaseReadOnly } from "@/lib/supabase/server";
 
-const DEFAULT_THRESHOLD_MINUTES = 60;
+const FALLBACK_THRESHOLD_MINUTES = 60;
 const CACHE_TTL_SECONDS = 60;
+
+// Staleness threshold in minutes, tunable via the BBB_STALENESS_MINUTES env var
+// so it can be right-sized (or effectively relaxed) from the Vercel dashboard
+// without a code change. Rationale: the public chart shows a *daily* aggregate
+// average, so a few hours of intraday lag — e.g. from GitHub Actions cron
+// delays — doesn't materially change what's displayed; the 60-minute default
+// was sized for live per-station prices we don't actually show. Set it high to
+// ride out scheduler lag. Falls back to 60 when unset or invalid.
+function configuredThresholdMinutes(): number {
+  const raw = Number(process.env.BBB_STALENESS_MINUTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : FALLBACK_THRESHOLD_MINUTES;
+}
 
 async function fetchLatestIngestedAt(): Promise<Date | null> {
   const client = supabaseReadOnly();
@@ -48,7 +60,7 @@ export async function getDataAgeMinutes(): Promise<number | null> {
 }
 
 export async function isStale(
-  thresholdMinutes: number = DEFAULT_THRESHOLD_MINUTES,
+  thresholdMinutes: number = configuredThresholdMinutes(),
 ): Promise<boolean> {
   const ageMinutes = await getDataAgeMinutes();
   if (ageMinutes === null) {
