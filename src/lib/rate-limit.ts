@@ -16,8 +16,14 @@ let resolved = false;
 function getLimiter(): Ratelimit | null {
   if (resolved) return cached;
   resolved = true;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Accept either the native Upstash names or the KV_* names that Vercel's
+  // Upstash Marketplace integration injects (KV_REST_API_URL / _TOKEN are the
+  // REST pair — not the redis:// KV_URL/REDIS_URL, which this client can't use,
+  // nor the read-only token, since the limiter writes counters).
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (!url || !token) {
     cached = null; // unprovisioned → limiter disabled
     return null;
