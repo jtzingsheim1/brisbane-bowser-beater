@@ -73,12 +73,12 @@ noted. Re-check before deploy and whenever the agent surface changes.
 
 ### 10. Data-licence exposure (non-cost, but launch-critical)
 - **Risk:** serving stale licensed data (LUL 2.3) or per-station prices.
-- **Defences:** **staleness gate** renders a maintenance page if the latest ingestion is >60 min old (2× the 30-min LUL clause); **aggregate-only** display (no per-station prices anywhere on the public surface); `BBB_PUBLIC` kill switch for instant takedown.
+- **Defences:** **staleness gate** renders a maintenance page if the latest ingestion is older than the configured threshold (default 60 min — 2× the 30-min LUL clause; env-tunable via `BBB_STALENESS_MINUTES`, clamped to 24 h max); **aggregate-only** display (no per-station prices anywhere on the public surface); `BBB_PUBLIC` kill switch for instant takedown.
 - **Residual:** see CLAUDE.md "Operational hygiene" — the off-switch path is deliberate.
 
 ## Pre-deploy checklist (verify at Phase 8)
 - [ ] Anthropic hard spend cap set in the console.
-- [ ] `UPSTASH_REDIS_REST_*` provisioned → rate limiter active (confirm a 429 after the threshold).
+- [ ] `KV_REST_API_*` (Vercel Upstash Marketplace integration) or `UPSTASH_REDIS_REST_*` provisioned → rate limiter active (confirm a 429 after the threshold).
 - [ ] `CRON_SECRET` set; unauthenticated `/api/cron/forecast` returns 401.
 - [ ] `USAGE_SALT` set; no raw IPs anywhere in the DB.
 - [ ] `ANTHROPIC_API_KEY` only in Vercel env — not in repo, client bundle, or logs.

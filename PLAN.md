@@ -13,11 +13,11 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 2 — Data ingestion + forecast model | ✅ Complete (schema, CSV backfill, `brisbane_daily_avg_u91` aggregate, cycle characterisation → `cycle_params.json`, TS daily projection, chunk-5 figure adoption, live 30-min GitHub Actions ingestion, daily forecast generation, and the daily narrative generator all landed — the chart, forecast line, and narrative all run on current data) |
 | Phase 3 — Static UI | ✅ Complete (chart, daily narrative, cycle education, privacy pane, `/about/data`, maintenance page, and homepage composition all shipped) |
 | Phase 4 — Agent layer | ✅ Complete (API route, two tools, system prompt, streaming chat UI, 2×2 starter chip grid, chip copy polish, and plan caching by `(situation_hash, day)` all shipped) |
-| Phase 5 — Cost protection + off-switch | ✅ Code complete (off-switch, input caps, max tokens/steps, per-IP rate limit (Upstash, graceful), `CRON_SECRET` on the forecast route, BYO-key header, and `usage_monthly_visitors` LUL 4.8 counting all landed; deploy-time config — Anthropic spend cap, Upstash + `USAGE_SALT` provisioning, env-var placement — happens at Phase 8) |
+| Phase 5 — Cost protection + off-switch | ✅ Complete (off-switch, input caps, max tokens/steps, per-IP rate limit (Upstash, graceful), `CRON_SECRET` on the forecast route, BYO-key header, and `usage_monthly_visitors` LUL 4.8 counting all landed; deploy-time config — Anthropic spend cap, Upstash + `USAGE_SALT` provisioning, env-var placement — wired up at Phase 8) |
 | Phase 6 — Abuse audit | ✅ Complete (`docs/abuse-audit.md` — every cost/abuse vector enumerated with its defence + a pre-deploy checklist) |
 | Phase 7 — Public docs | ✅ Complete (README rewritten in public voice; `/about/data` attribution page shipped in Phase 3) |
-| Phase 8 — Deploy + verify | Pending — runbook ready (`docs/deploy-runbook.md`); needs Vercel hookup + dashboard config |
-| Phase 9 — Wrap | Pending |
+| Phase 8 — Deploy + verify | ✅ Complete (live at https://brisbane-bowser-beater.vercel.app; Vercel project + Upstash Marketplace integration + all secrets provisioned; defence stack verified live — rate-limit 429, cron 401, agent guardrail, kill-switch toggle, paused/live page rendering) |
+| Phase 9 — Wrap | In progress (post-launch audit completed; audit-wrap PR addresses doc drift + small hardening + dead-code; outstanding follow-ups tracked in this file) |
 
 ---
 
