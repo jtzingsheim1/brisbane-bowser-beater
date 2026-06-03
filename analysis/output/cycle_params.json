@@ -334,5 +334,13 @@
       0.1963
     ]
   },
-  "drift_notes": "Measured 2023->2025 drift: period shortening ~3 d/yr (p=0.08), fall rate rising ~0.18 c/day/yr (p=0.04, significant), amplitude stable (~$0.35, p=0.96). Recency weighting leans the model current. Re-fit quarterly."
+  "drift_notes": "Measured 2023->2025 drift: period shortening ~3 d/yr (p=0.08), fall rate rising ~0.18 c/day/yr (p=0.04, significant), amplitude stable (~$0.35, p=0.96). Recency weighting leans the model current. Re-fit quarterly.",
+  "post_anomaly_anchor_date": "2026-05-01",
+  "anomaly_notes": {
+    "window": { "start": "2026-02-13", "end": "2026-04-30" },
+    "peak": { "date": "2026-03-29", "price_dollars": 2.591 },
+    "summary": "Brisbane core-Metro U91 daily mean climbed monotonically from ~$1.62 on 2026-02-13 to $2.591 on 2026-03-29 (~80% above the characterised $0.35 swing), then unwound monotonically back to baseline through April; settled into typical trough-region oscillation from late April. Observation about the price series only; no causal characterisation.",
+    "rationale_for_no_refit": "The 20 cycles fitted in this file stop at 2026-02-28. The Feb-Apr 2026 anomaly window (Feb 13 -> Apr 24's next genuine trough = 69 days) is excluded automatically by the existing 'period > 55d' rule (analysis/build_params.py MAX_PERIOD_DAYS = 55), so nothing inside the anomaly contaminates the fit. No re-fit needed.",
+    "post_anomaly_anchor_rationale": "First clean month boundary after the late-April consolidation. src/lib/forecast/project.ts filters input history to days >= this date before fitting, so the swing/phase anchor uses only post-anomaly data. Combined with the chart's existing TRUSTED_DAYS_FOR_CONFIDENT_FORECAST = 14 gate, the forecast self-clears from preliminary ~14 trustworthy live days after this date."
+  }
 }

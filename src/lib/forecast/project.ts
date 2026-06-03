@@ -165,10 +165,20 @@ export function projectForecast(
   const characterisedAmp = params.params.amplitude_dollars;
   const { phase, normalised_price, band_std } = params.shape;
 
-  // Sort ascending and keep the most recent FIT_WINDOW_DAYS for anchoring.
+  // Sort ascending — needed before the anchor-date gate as well as the fit.
   const sorted = [...history].sort((p, q) => (p.day < q.day ? -1 : 1));
-  const anchorIdx = dayIndex(sorted[sorted.length - 1].day);
-  const recentWindow = sorted.filter(
+
+  // Post-anomaly anchor gate (#47 PR-3). Filter to days >= the configured
+  // anchor date so the swing/phase fit ignores the anomaly window. If the
+  // most-recent observed day is itself before the anchor date, decline to
+  // forecast — the chart shows preliminary state (same plumbing as the
+  // "not enough varying history" branch below).
+  const anchorDate = params.post_anomaly_anchor_date;
+  const postAnomaly = sorted.filter((p) => p.day >= anchorDate);
+  if (postAnomaly.length < 14) return null;
+
+  const anchorIdx = dayIndex(postAnomaly[postAnomaly.length - 1].day);
+  const recentWindow = postAnomaly.filter(
     (p) => anchorIdx - dayIndex(p.day) < FIT_WINDOW_DAYS,
   );
 
