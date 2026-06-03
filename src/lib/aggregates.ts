@@ -313,12 +313,24 @@ async function fetchCoverageDeadzones(): Promise<Deadzone[]> {
   const spans: Deadzone[] = [];
 
   // (2) Backfill→live transition + ramp.
+  //
+  // Only extend `end` past the calendar transition via `rampEnd` when there's
+  // an actual calendar gap between CSV and live. If CSV bridges right up to
+  // live's first day (the post-#47 seam-cutover case), CSV-side carry-forward
+  // is what fills the early-ramp days where the live feed alone would be too
+  // thin — so no deadzone band is honest. Without this guard, the cutover
+  // delete in scripts/backfill-csv.mjs would leave a permanent 4-ish day band
+  // (liveCoverageRampEnd looks at cumulative-distinct live sites, which
+  // restarts from scratch after the delete and takes days to re-cross 80%).
   const firstLiveDay = await latestDayForSource("live_api", true);
   if (firstLiveDay) {
     let end = addUtcDays(firstLiveDay, -1);
-    const rampEnd = await liveCoverageRampEnd();
-    if (rampEnd && rampEnd > end) {
-      end = rampEnd;
+    const calendarGap = firstLiveDay > addUtcDays(lastBackfillDay, 1);
+    if (calendarGap) {
+      const rampEnd = await liveCoverageRampEnd();
+      if (rampEnd && rampEnd > end) {
+        end = rampEnd;
+      }
     }
     const start = addUtcDays(lastBackfillDay, 1);
     if (start <= end) {
@@ -342,8 +354,9 @@ async function fetchCoverageDeadzones(): Promise<Deadzone[]> {
 const getCachedCoverageDeadzones = unstable_cache(
   fetchCoverageDeadzones,
   // Versioned cache key — bump when the deadzone logic changes so dev/prod don't
-  // serve stale spans from the old computation. v3 = multi-span + flat-run.
-  ["aggregates:coverage-deadzone:v3"],
+  // serve stale spans from the old computation. v4 = #47 seam-cutover (rampEnd
+  // extension gated on calendar gap; v3 = multi-span + flat-run).
+  ["aggregates:coverage-deadzone:v4"],
   { revalidate: CACHE_TTL_SECONDS },
 );
 
