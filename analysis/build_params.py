@@ -116,6 +116,13 @@ def main() -> None:
         ),
     }
 
+    # NOTE: this script does NOT emit anomaly_notes or post_anomaly_anchor_date.
+    # Those are manual annotations added to cycle_params.json (see #47 PR-3).
+    # When the next quarterly re-fit runs, you must re-author them by hand
+    # alongside the regenerated body — otherwise the projection's post-anomaly
+    # gate (src/lib/forecast/project.ts) will lose its anchor date. The TS-side
+    # validator in src/lib/forecast/params.ts will fail loudly on a missing or
+    # malformed field, so a forgotten re-add won't slip through silently.
     out_path = OUT / "cycle_params.json"
     out_path.write_text(json.dumps(params, indent=2), encoding="utf-8")
     print(f"Wrote {out_path}")

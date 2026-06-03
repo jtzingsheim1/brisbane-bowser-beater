@@ -6,6 +6,12 @@ import raw from "../../../analysis/output/cycle_params.json";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isIsoDate(s: unknown): s is string {
+  return typeof s === "string" && ISO_DATE.test(s);
+}
+
 // Light runtime validation. The JSON is version-controlled, but a future re-fit
 // (Stage 3, quarterly) could change the schema; fail loudly rather than project
 // off a malformed template.
@@ -25,6 +31,21 @@ function validate(p: CycleParams): CycleParams {
   }
   if (!(p.params.period_days > 0) || !(p.params.amplitude_dollars > 0)) {
     throw new Error("cycle_params.json has non-positive period or amplitude");
+  }
+  if (!isIsoDate(p.post_anomaly_anchor_date)) {
+    throw new Error(
+      "cycle_params.json post_anomaly_anchor_date missing or not YYYY-MM-DD",
+    );
+  }
+  if (
+    !p.anomaly_notes ||
+    !isIsoDate(p.anomaly_notes.window?.start) ||
+    !isIsoDate(p.anomaly_notes.window?.end) ||
+    !isIsoDate(p.anomaly_notes.peak?.date)
+  ) {
+    throw new Error(
+      "cycle_params.json anomaly_notes is missing or has malformed dates",
+    );
   }
   return p;
 }

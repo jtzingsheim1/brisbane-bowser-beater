@@ -41,6 +41,20 @@ export type CycleParams = {
     band_std: number[]; // per-phase std across cycles, same length
   };
   drift_notes: string;
+  // ISO date (YYYY-MM-DD). projectForecast filters input history to days >=
+  // this date before fitting, so the swing/phase anchor uses only post-anomaly
+  // data. See #47 PR-3.
+  post_anomaly_anchor_date: string;
+  // Manual annotation describing the Feb-Apr 2026 price-series anomaly that
+  // sits outside the fitted cycles (see #47 PR-3). Written by hand into
+  // cycle_params.json; re-authored on every quarterly re-fit.
+  anomaly_notes: {
+    window: { start: string; end: string };
+    peak: { date: string; price_dollars: number };
+    summary: string;
+    rationale_for_no_refit: string;
+    post_anomaly_anchor_rationale: string;
+  };
 };
 
 // A single projected day, in the shape the forecasts table + chart expect.
