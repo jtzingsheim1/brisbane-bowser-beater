@@ -17,15 +17,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 6 — Abuse audit | ✅ Complete (`docs/abuse-audit.md` — every cost/abuse vector enumerated with its defence + a pre-deploy checklist) |
 | Phase 7 — Public docs | ✅ Complete (README rewritten in public voice; `/about/data` attribution page shipped in Phase 3) |
 | Phase 8 — Deploy + verify | ✅ Complete (live at https://brisbane-bowser-beater.vercel.app; Vercel project + Upstash Marketplace integration + all secrets provisioned; defence stack verified live — rate-limit 429, cron 401, agent guardrail, kill-switch toggle, paused/live page rendering) |
-| Phase 9 — Wrap | In progress (post-launch audit completed; audit-wrap PR addresses doc drift + small hardening + dead-code; outstanding follow-ups tracked in this file) |
-
----
-
-## Near-term follow-ups (after the pre-launch polish PR)
-
-- **Refresh the historical backfill from new QLD open-data CSVs.** As of 2026-05-27 the open-data portal had just published **April 2026** (March 2026 was still missing — check whether it lands too). April has since been loaded into `price_snapshots` for **chart display only** (it fills part of the old grey gap; see the next bullet); the cycle model deliberately was *not* re-fit across the missing-March gap. Remaining action: when **March** lands, download it, re-run the `/analysis` pipeline to extend the backfill and re-fit `cycle_params.json`, then trace the knock-on effects — the chart's deadzone bands, the forecast anchoring/quality (more real history may clear the "preliminary" state sooner), and the daily narrative. Re-validate after import. (Source: [data.qld.gov.au](https://data.qld.gov.au/dataset/fuel-price-reporting-2026).)
-
-- **Interleave the May 2026 CSV when it drops, then retire the gap.** The current shaded May gap exists because (a) QLD hasn't published the May open-data CSV yet, and (b) our live changes-only API feed only began in late May, so coverage is still building. When the **May CSV** is published it will give full retroactive May coverage. One-time exercise: backfill it into `price_snapshots` (`data_source='csv_backfill'`) via `scripts/backfill-csv.mjs`, mind the overlap with the live-API rows already covering late May (the PK is `site_id,fuel_name,transaction_date_utc` — upsert is safe, but sanity-check the seam where CSV meets live so we don't double-count or leave a one-day hole), and confirm the multi-span deadzone collapses. After this seam is bridged once, **all ongoing data is live API** — no more monthly CSV interleaves needed.
+| Phase 9 — Wrap | ✅ Complete (post-launch audit landed via PR #46; the March + May 2026 CSV backfill follow-ups closed out via PR #49 / issue #47. Remaining audit items are parked below — none gating.) |
 
 ---
 
@@ -50,7 +42,7 @@ Severity columns reflect the audit lanes' own ratings. Effort: S = minutes, M = 
 
 ### Critical-path test gaps (mostly S each)
 
-The 24-test suite covers deterministic forecast logic well but skips the cost / licence / privacy surfaces. **The two biggest code changes shipped on 2026-05-28 have zero direct tests.** Priority order (highest first):
+The current Vitest suite (38 tests across 5 files as of 2026-06-05) covers deterministic forecast logic + CSV header normalisation + low-level CSV helpers, but skips the cost / licence / privacy surfaces. **The two biggest code changes shipped on 2026-05-28 (freshness + rate-limit) still have zero direct tests.** Priority order (highest first):
 
 1. **`freshness.ts` env-parse + clamp**. New `BBB_STALENESS_MINUTES` path (default 60 → valid positive override → invalid `NaN`/`0`/negative/empty → fallback → `>1440` → clamp). Off-switch / LUL gate; one regression flips the site live or paused unintentionally.
 2. **`rate-limit.ts` env resolution**. `UPSTASH_*` set wins, `KV_*` set, both set (UPSTASH wins), neither set → null limiter. Today's KV_* fallback is the highest-risk change of the day. Requires `vi.resetModules` + dynamic import (module-level memoisation).
@@ -73,8 +65,7 @@ The 24-test suite covers deterministic forecast logic well but skips the cost / 
 - **Consolidate `readEnv` + `batchUpsert` in `scripts/backfill-csv.mjs`** with the versions in `scripts/lib/qld-api.mjs`. Currently duplicated — `backfill-csv.mjs` was self-contained from before `qld-api.mjs` was extracted. (Refactor-cleaner, investigate-before-removing.)
 - **In-place mutation in `mergeSpans`** at `src/lib/aggregates.ts:299` (`last.end = s.end`). Local copy, no caller-visible effect, but conflicts with the immutability preference in CLAUDE.md. Replace with `merged[merged.length - 1] = { ...last, end: s.end }`. (Code-quality, Low.)
 - **`getClientIp` comment**: clarify that fallbacks (`x-real-ip`, `x-forwarded-for`) are client-spoofable and only used in non-Vercel envs. (Security lane, Low.)
-- **`backfill-csv.mjs` `parseDateUtc` doesn't validate calendar dates** (e.g. accepts `32/01/2026`). One-shot script against a government CSV, very low real risk. Round-trip validate or skip-with-warning. (Code-quality, Low.)
-- **Stale references cleanup.** `PLAN.md` "Likely next-session entry points" section is now mostly obsolete (it talks about Phase 8 as "remaining gate"). `CLAUDE.md` rate-limit references (around the Phase 5 row + tech-stack table) still mention only `UPSTASH_REDIS_REST_*`. Worth a sweep when next touching the doc. (Docs lane, Medium drift.)
+- **`backfill-csv.mjs` `parseDateUtc` doesn't validate calendar dates** (e.g. accepts `32/01/2026`). One-shot script against a government CSV, very low real risk. (Now lives in `scripts/lib/csv-backfill.mjs` after the PR #48 extract.) Round-trip validate or skip-with-warning. (Code-quality, Low.)
 
 ---
 
@@ -94,7 +85,7 @@ The 24-test suite covers deterministic forecast logic well but skips the cost / 
 | Analysis language | Python scripts in `/analysis/` (own venv; notebook rejected — poor git diffs); production stays TypeScript |
 | Brief lifecycle | Retired — was kickoff context, not a living doc. Captured into CLAUDE.md, PLAN.md, and project memory before deletion. |
 
-**Open task carried into implementation**: chip copy tone polish. Structure is locked, wording is decided at Phase 4.
+Chip copy tone polish was the one open Phase 0 carry-in; landed in Phase 4 (`CHIPS` in `src/components/AgentChat.tsx`).
 
 ---
 
@@ -161,7 +152,7 @@ Exercises both publishable and secret keys against the data API. Never prints ke
     restructured `forecasts` to the aggregate grain (fuel_name + region).
   - Chart's dashed line + band and the agent's `get_forecast` light up
     automatically once a batch is written (post-merge, when 0007 applies).
-- ⏳ **Adopt measured cycle figures into user-facing UI / agent copy** (chunk 5). CLAUDE.md cycle section already updated with the verified, observation-only numbers; propagating into chart copy + agent system prompt is the remaining step, under the same language discipline.
+- ✅ **Adopt measured cycle figures into user-facing UI / agent copy** (chunk 5) — landed in PR #23. The verified, observation-only numbers (period ~39d, swing ~$0.35, peak ~38% in) propagated into the chart's cycle-education copy and the agent system prompt, under the same language discipline.
 - Default daily narrative line generated daily, cached for the day
 
 ### Phase 3 — Static UI
@@ -188,7 +179,7 @@ Exercises both publishable and secret keys against the data API. Never prints ke
 Cost protection:
 - ⏳ `ANTHROPIC_API_KEY` as Vercel env var only — never in repo, client, or logs (Phase 8 when Vercel hookup lands; local `.env.local` is the dev path)
 - ⏳ Hard daily spend cap set manually in Anthropic console
-- ✅ Per-IP rate limit via Upstash Redis — `src/lib/rate-limit.ts` (sliding window, 10/60s on the agent route). Graceful no-op until `UPSTASH_REDIS_REST_*` are provisioned (Vercel marketplace, Phase 8).
+- ✅ Per-IP rate limit via Upstash Redis — `src/lib/rate-limit.ts` (sliding window, 10/60s on the agent route). Reads either `UPSTASH_REDIS_REST_*` (native) or `KV_REST_API_*` (the env vars Vercel's Upstash Marketplace integration actually injects — added in PR #44). Graceful no-op when neither is set.
 - ✅ Aggressive caching of repeatable queries — `unstable_cache` on freshness + aggregates + narrative, plus agent plan caching (`agent_plans`, Phase 4).
 - ✅ `CRON_SECRET` for cron endpoint protection — the Vercel forecast route (`/api/cron/forecast`) honours a Bearer `CRON_SECRET` when set (open when unset, for local dev). The GitHub Actions ingest/forecast jobs write straight to Supabase and don't traverse this route.
 - ✅ Max tokens cap on every Anthropic call (1500 in `src/app/api/agent/route.ts`)
@@ -245,26 +236,7 @@ Add more vectors as discovered. Document each defence. Confirm before deploy.
 
 ### Phase 9 — Wrap
 
-- Confirm deploy URL and GitHub repo URL
-- 2-line summary for use elsewhere
-- If `fuel_app_brief.md` somehow still exists in the working directory, add to `.gitignore` (or delete) before first commit
-
----
-
-## Likely next-session entry points
-
-When picking up cold, the most useful chunks to consider — roughly ordered by visible payoff per effort:
-
-1. **Smoke-test the agent end-to-end.** Drop `ANTHROPIC_API_KEY` into `.env.local`, run `npm run dev`, open `/`, pick a chip or describe a situation. Verify streaming + visible tool calls + the language-constraint behaviour (try an accusatory prompt and confirm the graceful redirect). If `ingested_at` is older than 60 min, re-run `npm run backfill:csv` first to push freshness back inside the staleness window. No code required.
-2. **Polish chip copy/tone.** First-cut copy is in `CHIPS` at the top of `src/components/AgentChat.tsx`. Each chip has a `label`, `hint`, and `kickoff` message — open work is purely wording. Worth doing after the smoke-test so you can feel how each chip lands in conversation.
-3. **Phase 4 plan caching by `(situation_hash, day)`.** Migration adds an `agent_plans` table; route hashes the input situation pre-stream, returns cached output if hit, writes after stream completes. ~45 min, autonomous; defer until after entry 1 since blind streaming + caching is awkward to get right without a working agent to verify against.
-4. **Populate the `forecasts` table (post-merge of chunk 4).** Migration 0007 auto-applies on merge to `main`; then hit `GET /api/cron/forecast` once (locally via `npm run dev` against the migrated DB, or on the deploy) to write the first batch. The chart's dashed line + band and the agent's `get_forecast` light up immediately (both already wired). `?dry=1` previews the projection without writing. **(Chunks 2–4 are ✅ done — exploration, characterisation, and the TS projection in `src/lib/forecast/`.)**
-5. **Phase 2 chunk 5 — adopt measured figures into UI/agent copy.** CLAUDE.md already carries the verified numbers (period ~39d, swing ~$0.35, peak ~38% in). Propagate into chart copy + agent system prompt, observation-only.
-6. **Phase 5 cost protection layers** — per-IP rate limit via Upstash Redis, `CRON_SECRET`, BYO-key header, `usage_aggregates` table. Off-switch + per-call caps already landed; this is the remaining defensive surface. Mostly autonomous.
-7. ✅ **Phase 2 chunk 1.5 — live 30-min cron.** GitHub Actions ingest + weekly sites refresh, writing straight to Supabase. **Landed** — the chart now runs on current Brisbane data. Needs the three GitHub repo secrets set to run in CI (see the chunk-1 bullet above).
-8. ✅ **Daily forecast + narrative regeneration scheduled** — `generate-forecast.yml` runs `scripts/generate-forecast.ts` daily (reuses the production projection via tsx), writing both the `forecasts` batch and the `daily_narrative` line. Phase 2 is complete.
-
-Open external blocker: **none** — the QLD publisher token has been received and the live cron is in. Deploy (Phase 8) is the remaining gate to having the cron run on schedule in the cloud (locally/CI it already works).
+Closed out via PR #46 (post-launch audit + hardening) and PR #49 (issue #47 backfill follow-ups). Remaining work is in the parked audit list above; nothing gating.
 
 ---
 
@@ -287,4 +259,7 @@ Items deliberately deferred — track here so they're not lost:
 - **Quarterly cycle parameter re-fit** — Stage 3 of the forecast model architecture; document drift over time
 - **Real-time push from fuel API** — replace cron-pulled snapshot if the API ever supports it
 - **Staleness-cap the daily average (data quality — feeds chart AND forecast)** — the RPC (`brisbane_daily_avg_u91`) carry-forwards each station's last-known price indefinitely. Two problems: (1) during the backfill→live ramp-up, days are dominated by stale Feb prices until enough stations report — handled *cosmetically* today by the coverage-threshold deadzone (option A, ~80% cutoff landed ~24 May); (2) a **suspended/closed station** keeps contributing its frozen last price to the average forever — a small (~0.25%/station) but **permanent, accumulating** skew that the coverage filter can't catch (the station *did* report once). Fix (option B): exclude a station's price from a day's average when its latest price is older than ~N days (suggest ~21, under the cycle length), so the average reflects only currently-active stations and the forecast gets clean input. **Forecast caveat:** with a staleness cap applied *today* we'd have <`MIN_FIT_POINTS` (7) real days, so `projectForecast` would correctly return null until ~2 weeks of live coverage accrue — so the forecast pipeline should read the same staleness-capped history and the UI keeps the "forecast preliminary" state until then. Requires an RPC migration + re-validating the forecast pipeline. Until then the forecast is fit partly on the coverage-ramp artifact (the 13–23 May gradual "decline" is mostly stations flipping from stale to live, not real price movement): level anchoring is sound, cycle-phase anchoring is not.
-- **Generalise chart deadzone to any data gap** — the hatched "no data" band currently covers only the one backfill→live gap (detected via first-live vs last-backfill dates). The daily RPC (`brisbane_daily_avg_u91`) carry-forwards missing days by design, so a *future* cron outage would render as a flat line rather than a gap. To mask any gap honestly, generalise detection to **any run of ≥N days with no real snapshots** — suggest N≈5–7, since carry-forward is a sound estimate for short gaps (Brisbane prices move only ~1–3c/day) and >1 day would over-trigger. Requires a real-coverage query (the RPC hides gaps via carry-forward), returning an array of spans the chart renders as multiple bands; the backfill gap then becomes just the largest detected gap (unifies the logic). Ongoing/live outages remain covered separately by the 60-min staleness gate.
+<!-- Backlog item "Generalise chart deadzone to any data gap" landed via PR #42:
+     `detectFlatRuns` in src/lib/aggregates.ts catches any ≥5-day flat run and
+     `mergeSpans` returns multiple bands; the backfill→live transition is now
+     just one input to the same pipeline. Removed from backlog 2026-06-05. -->

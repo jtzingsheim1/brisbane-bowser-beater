@@ -15,14 +15,14 @@ Australian retail fuel prices in major capital cities exhibit recurring cycles t
 - **Shape** asymmetric — the climb to the peak occupies ~38% of the cycle, the easing-back ~62% (prices rise faster than they come down).
 - **Observed drift 2023→2025**: cycle length has been shortening (~3 d/yr), the easing-back phase has steepened (statistically significant), swing size unchanged. Recorded in `cycle_params.json` `drift_notes`; re-fit quarterly.
 
-These numbers are measured facts about the *price series*, framed as observations of the cycle — not characterisations of retailer conduct (see Legal hygiene). **Adoption into user-facing UI / agent narratives is Phase 2 chunk 5** (still pending) and must carry the same language discipline.
+These numbers are measured facts about the *price series*, framed as observations of the cycle — not characterisations of retailer conduct (see Legal hygiene). They've since been adopted into user-facing UI + agent narratives (Phase 2 chunk 5, PR #23), under the same language discipline.
 
 **Equally important — language discipline (defamation-aware).** See "Legal hygiene → Language about retailers and pricing" below. The cycle is an observation; the project does not characterise retailer behaviour as wrongdoing, and language across all surfaces must respect that. Australian defamation law is plaintiff-friendly and well-resourced retail fuel companies would not respond favourably to a tool that frames their behaviour as wrongdoing.
 
-In the interim (and ongoing):
+Ongoing:
 - Public-facing UI and the agent describe the cycle in **observation-only terms** (e.g., *"Brisbane prices move in recurring cycles; we forecast where they're going"*) — no causal characterisation of retailer behaviour.
-- The measured figures above may now be cited (they're observations of the price series), but always as estimates/observations, never as guarantees or as claims about why retailers price as they do. Chunk 5 wires them into UI/agent copy deliberately.
-- The chart itself implicitly shows the magnitudes once it's populated — let the data speak.
+- The measured figures above are cited as estimates/observations, never as guarantees or as claims about why retailers price as they do.
+- The chart itself implicitly shows the magnitudes — let the data speak.
 
 **Tone**: confident and useful, with light humour where it lands, never preachy. **Avoid editorialising** about the cycle or about retailer behaviour — the safe-list / avoid-list in the Legal hygiene section governs language across every surface in this project.
 
@@ -311,7 +311,7 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 
 Most conventions inherit from the global standards. Project-specific notes:
 
-- `cycle_params.json` is the contract between the Python analysis scripts and TS production code. Versioned in git. Schema documented inline in `analysis/build_params.py` (and mirrored in `/lib/forecast/types.ts` when chunk 4 lands).
+- `cycle_params.json` is the contract between the Python analysis scripts and TS production code. Versioned in git. Schema documented inline in `analysis/build_params.py` and mirrored in `src/lib/forecast/types.ts`. The manually-authored `anomaly_notes` block (added for the Feb–Apr 2026 anomaly, issue #47 PR-3) is written by hand into the JSON; re-author on every quarterly re-fit since the Python pipeline doesn't generate it.
 - Agent system prompt encodes the Brisbane cycle context AND chip-cell awareness (including the C-cell road-trip variant).
 - No PII written to Supabase. Caches keyed on hashes of inputs, not raw inputs.
 - Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `/lib/forecast/` is TS-only.
