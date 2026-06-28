@@ -48,6 +48,40 @@ they do.
    refined if you tell it more (tank size, weekly km, current level, etc.). It
    reasons over the same forecast the chart shows.
 
+## From prompt to production
+
+This repo is built through an AI-assisted workflow where I'm hands-on at exactly
+two points: I **prompt** the work, and I **review and merge** it. Everything in
+between — writing the code, branching, pushing, opening the pull request, getting
+it through the automated checks, and shipping to production — runs through Claude
+and CI. In the diagram below, the two **amber** steps are mine; **terracotta** is
+Claude and **grey** is automation.
+
+```mermaid
+flowchart LR
+    You["You — prompt<br/><small>terminal · desktop · mobile</small>"]:::human
+    Claude["Claude<br/>codes on a branch · pushes · opens PR"]:::claude
+    Checks["Automated checks<br/>lint · test · build · CodeQL · preview"]:::auto
+    Merge["You — review + merge"]:::human
+    Deploy["Auto-deploy<br/>Vercel + Supabase migrations"]:::auto
+    Live["🌐 Live site"]:::live
+
+    You --> Claude --> Checks --> Merge --> Deploy --> Live
+
+    %% Always-on data pipeline — a separate concern that feeds the same live site
+    Cron["GitHub Actions · scheduled<br/>ingest · forecast · refresh"]:::auto
+    DB[("Supabase")]:::auto
+    Cron -. data .-> DB -. data .-> Live
+
+    classDef human fill:#F2B632,stroke:#8A6D00,color:#111111,font-weight:bold;
+    classDef claude fill:#D97757,stroke:#A2452A,color:#FFFFFF,font-weight:bold;
+    classDef auto fill:#E5E9F0,stroke:#5B6B7F,color:#111111;
+    classDef live fill:#2E7D32,stroke:#1B5E20,color:#FFFFFF,font-weight:bold;
+```
+
+The data pipeline (dashed) runs on its own schedule, independent of any code
+change — see [Architecture](#architecture) for what each job does.
+
 ## How the forecast works
 
 The forecast is **deterministic** (no AI) and built in three stages:
