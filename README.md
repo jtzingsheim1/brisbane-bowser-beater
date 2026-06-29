@@ -48,6 +48,22 @@ they do.
    refined if you tell it more (tank size, weekly km, current level, etc.). It
    reasons over the same forecast the chart shows.
 
+## From prompt to production
+
+This repo is built through an AI-assisted workflow where the human is hands-on at
+exactly **two** points: **prompt** the work, and **review + merge** it. Everything
+in between — writing the code, branching, pushing, opening the pull request,
+passing the automated checks, and shipping to production — runs through Claude and
+the cloud. The swimlanes below make the split obvious: the **Human** lane holds
+just two touchpoints, while **Claude** and **Cloud** carry the rest.
+
+![Development workflow: a Human lane with two touchpoints (prompt, review + merge), a Claude lane that writes the code, and a Cloud lane that runs CI checks, CodeQL, deploy, and an always-on data pipeline.](docs/workflow.svg)
+
+The dashed **always-on data pipeline** runs on its own schedule, independent of
+any code change — see [Architecture](#architecture) for what each job does. The
+diagram is generated from [`docs/workflow-diagram.py`](docs/workflow-diagram.py)
+(pure stdlib; `python3 docs/workflow-diagram.py` regenerates the SVG).
+
 ## How the forecast works
 
 The forecast is **deterministic** (no AI) and built in three stages:

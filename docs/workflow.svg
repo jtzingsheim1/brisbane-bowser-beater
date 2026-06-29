@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="462" viewBox="0 0 1240 462" font-family="Helvetica, Arial, sans-serif">
+<rect width="1240" height="462" fill="#FFFFFF"/>
+<defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6 Z" fill="#6B7280"/></marker><marker id="ahd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3 L0,6 Z" fill="#9AA7B8"/></marker></defs>
+<rect x="8" y="22" width="1224" height="182" rx="14" fill="#EEF2F7" stroke="#D2DAE6" stroke-width="1.5"/>
+<text x="26" y="111.0" font-size="15" font-weight="800" fill="#48566B">Cloud</text>
+<text x="26" y="128.0" font-size="10.5" font-weight="600" fill="#48566B" opacity="0.7">fully automated</text>
+<rect x="8" y="220" width="1224" height="104" rx="14" fill="#F8E7DF" stroke="#EAC3B2" stroke-width="1.5"/>
+<text x="26" y="270.0" font-size="15" font-weight="800" fill="#A2452A">Claude</text>
+<text x="26" y="287.0" font-size="10.5" font-weight="600" fill="#A2452A" opacity="0.7">writes the code</text>
+<rect x="8" y="340" width="1224" height="104" rx="14" fill="#FBF1D8" stroke="#E6CF86" stroke-width="1.5"/>
+<text x="26" y="390.0" font-size="15" font-weight="800" fill="#8A6D00">Human</text>
+<text x="26" y="407.0" font-size="10.5" font-weight="600" fill="#8A6D00" opacity="0.7">2 touchpoints</text>
+<path d="M308.6,392.0 H309.1 V272.0 H309.7" fill="none" stroke="#6B7280" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M459.7,272.0 H460.3 V74.0 H460.9" fill="none" stroke="#6B7280" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M610.9,74.0 H611.4 V74.0 H612.0" fill="none" stroke="#6B7280" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M762.0,74.0 H762.6 V392.0 H763.1" fill="none" stroke="#6B7280" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M913.1,392.0 H913.7 V74.0 H914.3" fill="none" stroke="#6B7280" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M1064.3,74.0 H1064.9 V74.0 H1065.4" fill="none" stroke="#6B7280" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M762.0,152.0 H838.1 V152.0 H914.3" fill="none" stroke="#9AA7B8" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ahd)"/>
+<path d="M1064.3,152.0 H1064.9 V74.0 H1065.4" fill="none" stroke="#9AA7B8" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ahd)"/>
+<rect x="158.6" y="361.0" width="150" height="62" rx="11" fill="#F4B740" stroke="#B98700" stroke-width="1.6"/>
+<text x="233.6" y="390.0" font-size="15" font-weight="700" fill="#3A2D00" text-anchor="middle">Prompt the work</text>
+<text x="233.6" y="405.0" font-size="10" font-weight="400" fill="#3A2D00" text-anchor="middle">terminal · desktop · mobile</text>
+<rect x="309.7" y="241.0" width="150" height="62" rx="11" fill="#D97757" stroke="#A2452A" stroke-width="1.6"/>
+<text x="384.7" y="270.0" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Write the code</text>
+<text x="384.7" y="285.0" font-size="10" font-weight="400" fill="#FFFFFF" text-anchor="middle">branch · push · open PR</text>
+<rect x="460.9" y="43.0" width="150" height="62" rx="11" fill="#FFFFFF" stroke="#C2CBD6" stroke-width="1.6"/>
+<text x="535.9" y="71.5" font-size="13.5" font-weight="700" fill="#28323F" text-anchor="middle">CI checks</text>
+<text x="535.9" y="86.0" font-size="9.5" font-weight="400" fill="#28323F" text-anchor="middle">lint · test · build</text>
+<rect x="612.0" y="43.0" width="150" height="62" rx="11" fill="#FFFFFF" stroke="#C2CBD6" stroke-width="1.6"/>
+<text x="687.0" y="71.5" font-size="13.5" font-weight="700" fill="#28323F" text-anchor="middle">CodeQL</text>
+<text x="687.0" y="86.0" font-size="9.5" font-weight="400" fill="#28323F" text-anchor="middle">+ preview deploy</text>
+<rect x="763.1" y="361.0" width="150" height="62" rx="11" fill="#F4B740" stroke="#B98700" stroke-width="1.6"/>
+<text x="838.1" y="397.5" font-size="15" font-weight="700" fill="#3A2D00" text-anchor="middle">Review + merge</text>
+<rect x="914.3" y="43.0" width="150" height="62" rx="11" fill="#FFFFFF" stroke="#C2CBD6" stroke-width="1.6"/>
+<text x="989.3" y="71.5" font-size="13.5" font-weight="700" fill="#28323F" text-anchor="middle">Deploy</text>
+<text x="989.3" y="86.0" font-size="9.5" font-weight="400" fill="#28323F" text-anchor="middle">Vercel + migrations</text>
+<rect x="1065.4" y="43.0" width="150" height="62" rx="31.0" fill="#2E7D32" stroke="#1B5E20" stroke-width="1.6"/>
+<text x="1140.4" y="79.0" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">● Live site</text>
+<rect x="612.0" y="121.0" width="150" height="62" rx="11" fill="#F5F7FA" stroke="#AEBACA" stroke-width="1.6"/>
+<text x="687.0" y="148.2" font-size="11" font-weight="700" fill="#48566B" text-anchor="middle">GitHub Actions · 30 min</text>
+<text x="687.0" y="162.8" font-size="9.5" font-weight="400" fill="#48566B" text-anchor="middle">ingest · forecast · refresh</text>
+<path d="M914.3,130.0 a75.0,9 0 0 1 150.0,0 V174.0 a75.0,9 0 0 1 -150.0,0 Z" fill="#F5F7FA" stroke="#AEBACA" stroke-width="1.6"/>
+<path d="M914.3,130.0 a75.0,9 0 0 0 150.0,0" fill="none" stroke="#AEBACA" stroke-width="1.6"/>
+<text x="989.3" y="160.5" font-size="12" font-weight="700" fill="#48566B" text-anchor="middle">Supabase</text>
+<text x="838.1" y="134.0" font-size="10.5" font-style="italic" fill="#9AA7B8" text-anchor="middle">always-on data pipeline</text>
+</svg>
