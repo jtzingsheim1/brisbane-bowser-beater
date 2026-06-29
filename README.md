@@ -50,37 +50,19 @@ they do.
 
 ## From prompt to production
 
-This repo is built through an AI-assisted workflow where I'm hands-on at exactly
-two points: I **prompt** the work, and I **review and merge** it. Everything in
-between — writing the code, branching, pushing, opening the pull request, getting
-it through the automated checks, and shipping to production — runs through Claude
-and CI. In the diagram below, the two **amber** steps are mine; **terracotta** is
-Claude and **grey** is automation.
+This repo is built through an AI-assisted workflow where the human is hands-on at
+exactly **two** points: **prompt** the work, and **review + merge** it. Everything
+in between — writing the code, branching, pushing, opening the pull request,
+passing the automated checks, and shipping to production — runs through Claude and
+the cloud. The swimlanes below make the split obvious: the **Human** lane holds
+just two touchpoints, while **Claude** and **Cloud** carry the rest.
 
-```mermaid
-flowchart LR
-    You["You — prompt<br/><small>terminal · desktop · mobile</small>"]:::human
-    Claude["Claude<br/>codes on a branch · pushes · opens PR"]:::claude
-    Checks["Automated checks<br/>lint · test · build · CodeQL · preview"]:::auto
-    Merge["You — review + merge"]:::human
-    Deploy["Auto-deploy<br/>Vercel + Supabase migrations"]:::auto
-    Live["🌐 Live site"]:::live
+![Development workflow: a Human lane with two touchpoints (prompt, review + merge), a Claude lane that writes the code, and a Cloud lane that runs CI checks, CodeQL, deploy, and an always-on data pipeline.](docs/workflow.svg)
 
-    You --> Claude --> Checks --> Merge --> Deploy --> Live
-
-    %% Always-on data pipeline — a separate concern that feeds the same live site
-    Cron["GitHub Actions · scheduled<br/>ingest · forecast · refresh"]:::auto
-    DB[("Supabase")]:::auto
-    Cron -. data .-> DB -. data .-> Live
-
-    classDef human fill:#F2B632,stroke:#8A6D00,color:#111111,font-weight:bold;
-    classDef claude fill:#D97757,stroke:#A2452A,color:#FFFFFF,font-weight:bold;
-    classDef auto fill:#E5E9F0,stroke:#5B6B7F,color:#111111;
-    classDef live fill:#2E7D32,stroke:#1B5E20,color:#FFFFFF,font-weight:bold;
-```
-
-The data pipeline (dashed) runs on its own schedule, independent of any code
-change — see [Architecture](#architecture) for what each job does.
+The dashed **always-on data pipeline** runs on its own schedule, independent of
+any code change — see [Architecture](#architecture) for what each job does. The
+diagram is generated from [`docs/workflow-diagram.py`](docs/workflow-diagram.py)
+(pure stdlib; `python3 docs/workflow-diagram.py` regenerates the SVG).
 
 ## How the forecast works
 
