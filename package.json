@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.85",
-    "@ai-sdk/react": "^3.0.211",
+    "@ai-sdk/react": "^4.0.10",
     "@supabase/supabase-js": "^2.110.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
