@@ -1,0 +1,45 @@
+name: Keepalive (Upstash)
+
+# Sends one tiny write to Upstash Redis every few days so the free-tier Vercel
+# Marketplace database isn't flagged inactive and archived. Redis backs only the
+# agent rate limiter (src/lib/rate-limit.ts); on a low-traffic showcase the agent
+# is rarely hit, so real Redis traffic is sparse. This synthesises just enough
+# activity to keep the database live. Costs a handful of commands a week.
+#
+# Requires two repo secrets (Settings -> Secrets and variables -> Actions):
+#   UPSTASH_REDIS_REST_URL    - the REST endpoint, e.g. https://xxxx.upstash.io
+#   UPSTASH_REDIS_REST_TOKEN  - the REST token (read+write; the limiter writes too)
+# Both are visible in the Upstash console, or as KV_REST_API_URL / KV_REST_API_TOKEN
+# in the Vercel project's env vars (the Marketplace integration injects them there).
+
+on:
+  schedule:
+    - cron: "17 4 */3 * *" # every ~3 days, off-peak UTC (their threshold is "weeks")
+  workflow_dispatch: {}
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write keepalive key to Upstash
+        env:
+          URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
+            echo "::error::UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN secrets are not set"
+            exit 1
+          fi
+          # SET bbb:keepalive <unix-ts> EX 604800  (7-day TTL; self-expiring, harmless)
+          resp=$(curl -sS --fail-with-body \
+            -H "Authorization: Bearer $TOKEN" \
+            "${URL%/}/set/bbb:keepalive/$(date +%s)/EX/604800")
+          echo "Upstash response: $resp"
+          echo "$resp" | grep -q '"result":"OK"' || {
+            echo "::error::unexpected Upstash response (expected {\"result\":\"OK\"})"
+            exit 1
+          }

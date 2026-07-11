@@ -44,17 +44,42 @@ export type RateLimitResult = {
   retryAfterSeconds: number;
 };
 
-// Returns { allowed: true } permissively when the limiter isn't provisioned.
+const PERMISSIVE: RateLimitResult = {
+  allowed: true,
+  limit: REQUESTS,
+  remaining: REQUESTS,
+  retryAfterSeconds: 0,
+};
+
+// Enforces normally when Upstash is provisioned and reachable. Two distinct
+// permissive paths, deliberately kept separate:
+//   1. Unprovisioned (no env vars) — local dev / before the Upstash integration
+//      is wired. The limiter simply doesn't exist, so every request is allowed.
+//   2. FAIL OPEN — the limiter exists but the Redis call errors (archived DB,
+//      transient outage, network blip). We allow *that* request rather than
+//      500 the agent, and log it so the degradation is visible. This is scoped
+//      to an actual thrown error — the normal enforcement path is untouched, so
+//      a healthy limiter still returns 429s. The Anthropic hard spend cap
+//      (cost defence layer 1) remains the backstop while Redis is down.
 export async function checkAgentRateLimit(ip: string): Promise<RateLimitResult> {
   const limiter = getLimiter();
   if (!limiter) {
-    return { allowed: true, limit: REQUESTS, remaining: REQUESTS, retryAfterSeconds: 0 };
+    return PERMISSIVE; // path 1: unprovisioned
   }
-  const { success, limit, remaining, reset } = await limiter.limit(ip);
-  return {
-    allowed: success,
-    limit,
-    remaining,
-    retryAfterSeconds: Math.max(0, Math.ceil((reset - Date.now()) / 1000)),
-  };
+  try {
+    const { success, limit, remaining, reset } = await limiter.limit(ip);
+    return {
+      allowed: success,
+      limit,
+      remaining,
+      retryAfterSeconds: Math.max(0, Math.ceil((reset - Date.now()) / 1000)),
+    };
+  } catch (error) {
+    // path 2: fail open on a genuine limiter error only
+    console.error(
+      "[rate-limit] limiter unreachable; failing open for this request",
+      error,
+    );
+    return PERMISSIVE;
+  }
 }
