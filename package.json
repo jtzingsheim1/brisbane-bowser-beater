@@ -17,9 +17,9 @@
     "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs --force && next dev"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.9",
-    "@ai-sdk/react": "^4.0.17",
-    "@supabase/supabase-js": "^2.110.1",
+    "@ai-sdk/anthropic": "^4.0.15",
+    "@ai-sdk/react": "^4.0.30",
+    "@supabase/supabase-js": "^2.110.5",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "ai": "^7.0.16",
@@ -41,7 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
-    "tsx": "^4.23.0",
+    "tsx": "^4.23.1",
     "typescript": "^6",
     "vitest": "^4.1.10"
   }
