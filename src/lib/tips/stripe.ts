@@ -15,8 +15,10 @@ export function getStripe(): Stripe | null {
     cached = null;
     return null;
   }
-  // No apiVersion override: the SDK pins the API version its types are
-  // generated against, which is the only version this code is written for.
-  cached = new Stripe(key);
+  // Pin the API version explicitly to the one this SDK's types were generated
+  // against. Omitting it makes Stripe use the *account's* dashboard-default
+  // version at runtime, which can silently drift from the typed version and
+  // change response shapes under us; pinning keeps runtime and types locked.
+  cached = new Stripe(key, { apiVersion: "2026-06-24.dahlia" });
   return cached;
 }

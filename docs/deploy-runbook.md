@@ -81,6 +81,7 @@ live keys never enter a repo, a session, or a log:
    | `STRIPE_SECRET_KEY` | live secret key — or better, a **restricted key** with only Checkout Sessions write |
    | `STRIPE_WEBHOOK_SECRET` | from step 3 |
    | `BBB_TIPS` | leave unset until steps 1–3 are done, then `true` |
+   | `APP_ORIGIN` | optional but recommended — set to the canonical site URL (e.g. `https://<site>`) so post-checkout redirects don't depend on the request Host header |
 
 3. **Register the production webhook**: Stripe dashboard → Developers →
    Webhooks → add endpoint `https://<site>/api/stripe/webhook`, subscribed to

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { tipsEnabled } from "@/lib/tips/config";
 
 export const metadata: Metadata = {
   title: "Thanks for the shout — Brisbane Bowser Beater",
@@ -10,6 +12,12 @@ export const metadata: Metadata = {
 // zero-donor-PII posture holds even here. Stripe handles the receipt.
 
 export default function TipThanksPage() {
+  // Gated like the checkout route: while the tip jar is flagged off, this page
+  // 404s too, so "no payment UI exists anywhere" stays literally true and the
+  // unreleased feature isn't discoverable via a stray route.
+  if (!tipsEnabled()) {
+    notFound();
+  }
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-16 sm:px-8">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-3xl">

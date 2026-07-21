@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   isValidTipAmountCents,
   MAX_TIP_CENTS,
@@ -117,6 +117,54 @@ describe("mapEventToLedgerRow (PII whitelist)", () => {
       type: "charge.succeeded",
     } as unknown as Stripe.Event;
     expect(mapEventToLedgerRow(other)).toBeNull();
+  });
+
+  it("throws (rather than producing a bad Date) on a non-finite timestamp", () => {
+    // A verified-but-malformed event must not crash the route with a 500 that
+    // makes Stripe retry forever; the route catches this throw and 400s.
+    const malformed = {
+      ...COMPLETED_EVENT,
+      created: Number.NaN,
+    } as unknown as Stripe.Event;
+    expect(() => mapEventToLedgerRow(malformed)).toThrow();
+  });
+});
+
+describe("webhook route logging hygiene", () => {
+  it("does not log donor PII when signature verification fails", async () => {
+    // The signature-failure path must log only the error message — never the
+    // thrown Stripe error object, which carries the raw request body (donor
+    // email/name/phone) as a property.
+    process.env.STRIPE_WEBHOOK_SECRET = SECRET;
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+
+    const logged: string[] = [];
+    const spy = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) => {
+        logged.push(args.map((a) => String(a)).join(" "));
+      });
+
+    try {
+      const res = await POST(
+        new Request("https://example.com/api/stripe/webhook", {
+          method: "POST",
+          headers: {
+            "stripe-signature": "t=1,v1=deadbeef", // deliberately invalid
+            "content-type": "application/json",
+          },
+          body: PAYLOAD, // contains donor@example.com / Generous Donor / phone
+        }),
+      );
+      expect(res.status).toBe(400);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const blob = logged.join("\n");
+    expect(blob).not.toContain("donor@example.com");
+    expect(blob).not.toContain("Generous Donor");
+    expect(blob).not.toContain("+61400000000");
   });
 });
 

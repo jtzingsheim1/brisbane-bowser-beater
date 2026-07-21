@@ -13,6 +13,19 @@ export const runtime = "nodejs";
 // the browser to redirect to. Card details are entered on Stripe's page and
 // never touch this server — our involvement ends at "here's the amount".
 
+function resolveOrigin(req: Request): string | null {
+  // A configured canonical origin wins, so the redirect target can't be set by
+  // a forged Host header in production. Strip any trailing slash to keep the
+  // interpolated paths clean. Server-only (no NEXT_PUBLIC_ prefix) so it's
+  // changeable from the dashboard without a rebuild.
+  const configured = process.env.APP_ORIGIN?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("host");
+  if (!host) return null;
+  return `${proto}://${host}`;
+}
+
 export async function POST(req: Request) {
   if (!tipsEnabled()) {
     // Feature-flagged off → behave as though the endpoint doesn't exist.
@@ -21,7 +34,7 @@ export async function POST(req: Request) {
   const stripe = getStripe();
   if (!stripe) {
     return Response.json(
-      { error: "Tips aren't configured yet. Set STRIPE_SECRET_KEY." },
+      { error: "Tips are temporarily unavailable." },
       { status: 503 },
     );
   }
@@ -53,15 +66,16 @@ export async function POST(req: Request) {
     return new Response("Invalid amount", { status: 400 });
   }
 
-  // Redirect targets only — worst case a forged Host header sends the *payer's
-  // own browser* somewhere else after they pay, so this needs no more trust
-  // than the header already carries on Vercel.
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const host = req.headers.get("host");
-  if (!host) {
+  // Redirect targets for after checkout. Prefer a server-configured canonical
+  // origin (NEXT_PUBLIC_SITE_URL) so a forged Host header can't set the
+  // post-payment redirect at all. Fall back to the request headers when it's
+  // unset (local dev / preview) — worst case there, a forged Host only sends
+  // the *payer's own browser* elsewhere after they pay (funds still go to the
+  // real account), so the header carries no more trust than that.
+  const origin = resolveOrigin(req);
+  if (!origin) {
     return new Response("Missing host", { status: 400 });
   }
-  const origin = `${proto}://${host}`;
 
   try {
     const session = await stripe.checkout.sessions.create({
