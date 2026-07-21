@@ -65,3 +65,41 @@ To pause or take down — no code change needed:
 - **Pause:** `BBB_PUBLIC=false` (instant).
 - **Stop the feed:** disable the GitHub Actions workflows.
 - **Wind down the licence:** see CLAUDE.md → "Operational hygiene → Permanent exit path".
+
+## 6. Tip jar go-live (Stripe — added post-launch)
+
+The "Shout me a litre" tip jar ships **flag-off**: until `BBB_TIPS=true`, no
+payment UI exists anywhere on the site. Go-live is entirely dashboard work —
+live keys never enter a repo, a session, or a log:
+
+1. **Stripe account verified** (identity/payout checks complete in the Stripe
+   dashboard).
+2. **Vercel env (Production):**
+
+   | Var | Notes |
+   |---|---|
+   | `STRIPE_SECRET_KEY` | live secret key — or better, a **restricted key** with only Checkout Sessions write |
+   | `STRIPE_WEBHOOK_SECRET` | from step 3 |
+   | `BBB_TIPS` | leave unset until steps 1–3 are done, then `true` |
+   | `APP_ORIGIN` | optional but recommended — set to the canonical site URL (e.g. `https://<site>`) so post-checkout redirects don't depend on the request Host header |
+
+3. **Register the production webhook**: Stripe dashboard → Developers →
+   Webhooks → add endpoint `https://<site>/api/stripe/webhook`, subscribed to
+   the `checkout.session.*` events. Copy its signing secret into
+   `STRIPE_WEBHOOK_SECRET`.
+4. **Flip `BBB_TIPS=true`** and redeploy (env vars need a fresh deployment to
+   reach the routes).
+5. **Verify end-to-end with one real donation** (a $2 shout from a mate works):
+   confirm the payment in the Stripe dashboard, then confirm the matching row
+   landed in `tip_ledger` (Supabase → Table Editor) with the same checkout
+   session ID — that's the reconciliation loop closed. Check the row holds
+   only opaque IDs — no name, no email.
+
+**Test-mode rehearsal (optional, on a preview deployment):** set the three vars
+on the Preview environment with **test-mode** values, register a webhook for the
+preview URL (or run `stripe listen --forward-to <preview>/api/stripe/webhook`),
+and pay with card `4242 4242 4242 4242`. Same verification as step 5.
+
+**Off-switch:** unset `BBB_TIPS` (or set `false`) — the tip UI and checkout
+route vanish; the webhook receiver stays alive so in-flight events still land
+in the ledger.

@@ -48,6 +48,10 @@ they do.
    refined if you tell it more (tank size, weekly km, current level, etc.). It
    reasons over the same forecast the chart shows.
 
+There's also a small **"Shout me a litre"** tip jar — Stripe-hosted Checkout,
+fuel-themed amounts, and a strict no-donor-data posture (see
+[Privacy](#privacy)).
+
 ## From prompt to production
 
 This repo is built through an AI-assisted workflow where the human is hands-on at
@@ -138,6 +142,15 @@ No accounts, no login, no cookies that follow you around, no client-side
 analytics. The planner conversation goes to Anthropic to generate your plan and
 isn't stored on our side; repeatable results are cached against a **hash** of
 the inputs, not the inputs themselves. It's all open source — read the code.
+
+**Tips ("Shout me a litre"):** payments run through Stripe-hosted Checkout, so
+card details never touch this site. Deliberately, **no donor PII ever enters
+our database** — donor identity's system of record is Stripe (that's their
+regulated job). Our reconciliation ledger records only opaque Stripe IDs
+(event, checkout session, payment intent), the amount, currency, status, and
+timestamps, each row backed by a signature-verified webhook event. The ledger
+has no public read access. The practical upshot: a breach of our database
+would expose no donor identities, because they were never here.
 
 ## Local development
 
