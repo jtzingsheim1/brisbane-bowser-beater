@@ -4,6 +4,7 @@ import DailyNarrative from "@/components/DailyNarrative";
 import Disclosure from "@/components/Disclosure";
 import PriceChart from "@/components/PriceChart";
 import PrivacyTrustPane from "@/components/PrivacyTrustPane";
+import TipJar from "@/components/TipJar";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import {
@@ -11,6 +12,7 @@ import {
   getCoverageDeadzones,
   getLatestForecast,
 } from "@/lib/aggregates";
+import { tipsEnabled } from "@/lib/tips/config";
 import { recordVisit } from "@/lib/usage";
 
 export default async function Home() {
@@ -119,6 +121,14 @@ export default async function Home() {
           <AgentChat />
         </div>
       </section>
+
+      {/* Flag-gated (BBB_TIPS): no payment UI renders until live Stripe keys
+          and the webhook are wired up. */}
+      {tipsEnabled() && (
+        <section aria-label="Support the developer" className="mb-4">
+          <TipJar />
+        </section>
+      )}
     </main>
   );
 }
