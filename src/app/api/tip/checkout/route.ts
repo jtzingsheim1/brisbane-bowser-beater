@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   }
 
   // Redirect targets for after checkout. Prefer a server-configured canonical
-  // origin (NEXT_PUBLIC_SITE_URL) so a forged Host header can't set the
+  // origin (APP_ORIGIN) so a forged Host header can't set the
   // post-payment redirect at all. Fall back to the request headers when it's
   // unset (local dev / preview) — worst case there, a forged Host only sends
   // the *payer's own browser* elsewhere after they pay (funds still go to the
@@ -81,6 +81,11 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       submit_type: "donate",
+      // Managed Payments (Stripe as merchant of record) is on by default for
+      // newer accounts and rejects inline price_data without a product
+      // tax_code. A tip has no meaningful tax code, and BBB stays the
+      // merchant of record for its own tip jar — so opt this session out.
+      managed_payments: { enabled: false },
       line_items: [
         {
           quantity: 1,
@@ -99,7 +104,13 @@ export async function POST(req: Request) {
     }
     return Response.json({ url: session.url });
   } catch (error) {
-    console.error("[tips] checkout session creation failed", error);
+    // Log only the message, matching the webhook route's discipline: Stripe
+    // error objects drag the full API response (and its headers) into the
+    // logs, which is noise at best and a leak vector if the shape changes.
+    console.error(
+      "[tips] checkout session creation failed:",
+      error instanceof Error ? error.message : "unknown error",
+    );
     return Response.json(
       { error: "Couldn't start checkout — please try again shortly." },
       { status: 502 },
