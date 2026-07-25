@@ -37,6 +37,7 @@ BASELINE_WINDOW_DAYS = 55     # rolling-median window for detrend (~1.5 cycles)
 MIN_PROMINENCE = 0.08         # $/L: ignore swings smaller than ~8c
 MIN_DISTANCE_DAYS = 18        # cycles can't be closer than this
 PHASE_POINTS = 100            # resolution of the normalised cycle shape
+MAX_PERIOD_DAYS = 55          # exclusion: longer "cycles" are missed-trough merges
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,20 @@ def build_cycles(s: pd.Series, troughs: np.ndarray, peaks: np.ndarray) -> list[C
             )
         )
     return cycles
+
+
+def select_cycles(cycles: list[Cycle]) -> tuple[list[Cycle], list[Cycle]]:
+    """Split detected cycles into (included, excluded) for fitting.
+
+    The single exclusion rule — period > MAX_PERIOD_DAYS, i.e. likely
+    missed-trough merges — lives HERE and only here. build_params.py (the
+    committed fit) and figures.py (the committed visuals) both use this
+    function, so the visuals can never disagree with cycle_params.json about
+    which cycles count.
+    """
+    included = [c for c in cycles if c.period_days <= MAX_PERIOD_DAYS]
+    excluded = [c for c in cycles if c.period_days > MAX_PERIOD_DAYS]
+    return included, excluded
 
 
 def normalised_shape(s: pd.Series, c: Cycle) -> np.ndarray:

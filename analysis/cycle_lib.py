@@ -41,8 +41,9 @@ COLS = {
 
 def _read_one(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path, dtype=str, encoding="utf-8-sig", on_bad_lines="skip")
-    # Normalise header whitespace, then keep only the columns we know.
-    df.columns = [c.strip() for c in df.columns]
+    # Normalise headers (some months use spaces, e.g. "Fuel Type" for
+    # "Fuel_Type"), then keep only the columns we know.
+    df.columns = [c.strip().replace(" ", "_") for c in df.columns]
     present = {src: dst for src, dst in COLS.items() if src in df.columns}
     missing = set(COLS) - set(present)
     if missing:
@@ -64,7 +65,18 @@ def load_events(data_dir: Path = DATA_DIR) -> pd.DataFrame:
     raw["postcode_num"] = pd.to_numeric(raw["postcode"], errors="coerce")
     raw["price"] = pd.to_numeric(raw["price"], errors="coerce")
     raw["site_id"] = pd.to_numeric(raw["site_id"], errors="coerce")
-    raw["ts"] = pd.to_datetime(raw["ts"], dayfirst=True, errors="coerce")
+    # Timestamps come in two shapes depending on how the CSV was fetched:
+    # direct downloads use DD/MM/YYYY (dayfirst), datastore dumps use ISO 8601.
+    # dayfirst=True silently TRANSPOSES ISO dates (2023-09-07 -> July 9) and
+    # NaT-drops any ISO date with day > 12, so try strict ISO first and fall
+    # back to dayfirst only for the rows ISO couldn't parse.
+    ts = pd.to_datetime(raw["ts"], format="ISO8601", errors="coerce")
+    fallback = ts.isna() & raw["ts"].notna()
+    if fallback.any():
+        ts.loc[fallback] = pd.to_datetime(
+            raw.loc[fallback, "ts"], dayfirst=True, errors="coerce"
+        )
+    raw["ts"] = ts
 
     mask = (
         (raw["state"] == STATE)

@@ -26,6 +26,7 @@ import numpy as np
 
 from cycle_fit import (
     BASELINE_WINDOW_DAYS,
+    MAX_PERIOD_DAYS,
     MIN_DISTANCE_DAYS,
     MIN_PROMINENCE,
     PHASE_POINTS,
@@ -34,10 +35,10 @@ from cycle_fit import (
     detrend,
     get_series,
     normalised_shape,
+    select_cycles,
 )
 
 OUT = Path(__file__).parent / "output"
-MAX_PERIOD_DAYS = 55
 HALF_LIFE_YEARS = 1.0  # recency half-life for shape + period
 
 
@@ -54,7 +55,7 @@ def main() -> None:
     cyc, _ = detrend(s)
     troughs, peaks = detect(cyc)
     all_cycles = build_cycles(s, troughs, peaks)
-    cycles = [c for c in all_cycles if c.period_days <= MAX_PERIOD_DAYS]
+    cycles, _excluded = select_cycles(all_cycles)
     w = recency_weights(cycles)
 
     periods = np.array([c.period_days for c in cycles], float)

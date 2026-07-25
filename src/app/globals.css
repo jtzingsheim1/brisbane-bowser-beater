@@ -16,6 +16,8 @@
   --chart-hatch: #71717a; /* zinc-500 */
   --chart-band: #c7d2fe; /* indigo-200 */
   --chart-line: #1e40af; /* blue-800 */
+  --chart-anomaly: #f59e0b; /* amber-500 — anomaly-window shading (low opacity) */
+  --chart-faint: #a1a1aa; /* zinc-400 — faint per-cycle rows in the overlay */
 }
 
 @theme inline {
@@ -36,6 +38,8 @@
     --chart-hatch: #d4d4d8; /* zinc-300 — hatch needs to read on black */
     --chart-band: #6366f1; /* indigo-500 — translucent wash stays visible */
     --chart-line: #93c5fd; /* blue-300 — legible price line on near-black */
+    --chart-anomaly: #fbbf24; /* amber-400 — reads on near-black at low opacity */
+    --chart-faint: #71717a; /* zinc-500 — faint rows recede on dark */
   }
 }
 

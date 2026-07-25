@@ -158,7 +158,7 @@ Split into three stages:
 |---|---|---|
 | **1. Cycle characterisation** (one-time) | Python scripts in `/analysis/` | Pull max historical data → detect troughs/peaks → parameterise cycle (period, asymmetry, amplitude) → exclude outlier cycles → output `cycle_params.json` ✅ landed 2026-05 |
 | **2. Daily projection** | TS, runs after each ingestion (30-min cadence; projection itself only needs to run once a day) | Read `cycle_params.json` → anchor canonical shape to most recent observed Brisbane aggregate → project ~30 days forward → write `forecasts` table |
-| **3. Occasional re-fit** (~quarterly) | Manual rerun of Stage 1 | Refresh parameters, document drift |
+| **3. Occasional re-fit** (~quarterly) | Manual rerun of Stage 1 (`analysis/refresh_all.py` — one command regenerating `cycle_params.json` **and** the committed visuals/data artifacts together) | Refresh parameters, document drift, re-author `anomaly_notes` by hand (script prints a reminder) |
 
 **Empirical, not prescribed.** Specific peak-detection algorithm, outlier thresholds, parameter list, and shape representation get chosen inside the analysis scripts based on what the data actually shows. Cycle shape (sawtooth, sinusoidal, hybrid) is an empirical question — the production code is shape-agnostic by using the characterised template, not a hardcoded functional form.
 
@@ -176,6 +176,7 @@ Long-form methodology lives in README "How the forecast works" section (Phase 7)
 
 - `/analysis/*.py` — Python scripts (own venv), exploratory but version-control-friendly: `download_data.py` (cache QLD CSVs), `cycle_lib.py` (load + daily series), `cycle_fit.py` (detrend/detect/canonical), `trend_check.py` (drift test), `build_params.py` (finalise). No notebook — deliberate (clean git diffs).
 - `/analysis/output/cycle_params.json` — committed artifact, the contract between Python and TS
+- `/analysis/output/history_daily.json` + `cycle_shapes.json` — committed artifacts behind the public cycle visuals (education charts, README images, OG card), emitted by `analysis/figures.py` pinned to the committed fit; `src/lib/history/artifacts.test.ts` fails the build if they drift from `cycle_params.json`
 - `/lib/forecast/` — TS production code, reads the JSON, knows nothing about Python
 - Vercel runtime is pure TS — Python never runs on the server
 

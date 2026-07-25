@@ -21,8 +21,17 @@ on these cycles, which are not closely correlated with wholesale price
 movements. For a driver, the practical upshot is simple: **when you fill can
 matter as much as where.**
 
-This app focuses on **Brisbane Metro U91**. From ~3 years of Queensland
-open-data price reporting, the current Brisbane cycle is observed to:
+Here's three years of the Brisbane-area daily average — the pattern needs no
+explaining:
+
+![Line chart of the Brisbane average U91 price, April 2023 to June 2026, showing about twenty recurring sawtooth price cycles. One unusual stretch in early 2026 is shaded and labelled as excluded from cycle fitting.](docs/images/cycle-history.png)
+
+*Data: QLD Fuel Price Reporting, [data.qld.gov.au](https://www.data.qld.gov.au)
+(CC BY 4.0).*
+
+This app focuses on **Brisbane Metro U91**. From that same ~3 years of
+Queensland open-data price reporting, the current Brisbane cycle is observed
+to:
 
 - run **~39 days** trough-to-trough (recent cycles have ranged ~31–46 days),
 - swing **~$0.35/L** from trough to peak,
@@ -84,8 +93,26 @@ The forecast is **deterministic** (no AI) and built in three stages:
    fit), and projects the canonical shape ~30 days ahead, anchored to today's
    price. It fits only against genuinely-varying recent data, so flat gaps in the
    feed can't distort it.
-3. **Re-fit occasionally (~quarterly).** Re-run stage 1 to refresh the template
-   and document drift.
+3. **Re-fit occasionally (~quarterly).** One command —
+   `analysis/.venv/bin/python analysis/refresh_all.py` (after
+   `download_data.py`) — regenerates the template **and** every committed
+   visual/data artifact together, so a partial refresh can't slip through
+   (and a test fails the build if it somehow does). One manual step remains:
+   re-authoring the hand-written `anomaly_notes` block in
+   `cycle_params.json`; the script prints a reminder.
+
+The model itself is easiest to see, not describe: every fitted cycle
+overlaid on a common phase axis, with the canonical template — the exact
+`shape` array committed in `cycle_params.json` — drawn bold on top. Not a
+formula; just the recency-weighted average shape of observed cycles.
+
+![Overlay of twenty Brisbane price cycles, each normalised from one cheapest day to the next, drawn as faint lines, with the bold recency-weighted average cycle shape on top: a fast climb over roughly the first 40 percent of the cycle, then a slower easing back down.](docs/images/cycle-overlay.png)
+
+The faint per-cycle rows live in
+[`analysis/output/cycle_shapes.json`](analysis/output/cycle_shapes.json) and are
+regenerated pinned to the committed fit's data window, with the cycle count
+asserted against `cycle_params.json` — a consistency test fails the build if
+the two artifacts ever describe different fits.
 
 **The uncertainty band** comes from how much past cycles have varied at each
 point in the cycle:
