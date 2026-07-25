@@ -18,7 +18,7 @@ Architecture and product context live in [`CLAUDE.md`](CLAUDE.md). This file tra
 | Phase 7 — Public docs | ✅ Complete (README rewritten in public voice; `/about/data` attribution page shipped in Phase 3) |
 | Phase 8 — Deploy + verify | ✅ Complete (live at https://brisbane-bowser-beater.vercel.app; Vercel project + Upstash Marketplace integration + all secrets provisioned; defence stack verified live — rate-limit 429, cron 401, agent guardrail, kill-switch toggle, paused/live page rendering) |
 | Phase 9 — Wrap | ✅ Complete (post-launch audit landed via PR #46; the March + May 2026 CSV backfill follow-ups closed out via PR #49 / issue #47. Remaining audit items are parked below — none gating.) |
-| Post-launch — "Shout me a litre" tip jar (Stripe) | 🚧 Built 2026-07-21 (Stripe-hosted Checkout, signature-verified webhook → PII-free `tip_ledger`, flag-gated behind `BBB_TIPS`). Awaiting go-live: live keys + webhook registration + flag flip — see deploy-runbook §6. |
+| Post-launch — "Shout me a litre" tip jar (Stripe) | ✅ Live 2026-07-22 (Stripe-hosted Checkout, signature-verified webhook → PII-free `tip_ledger`, flag-gated behind `BBB_TIPS`; merged via PR #76 + Managed Payments fix #79, verified in production with a real donation reconciled to the ledger). |
 | Post-launch — cycle visuals ("show, don't tell") | ✅ Built 2026-07-25 (design + independent review in `docs/cycle-visuals-design.md`): always-visible 3-yr history + model-overlay charts on the homepage from committed artifacts (`history_daily.json` / `cycle_shapes.json`, cross-checked against `cycle_params.json` by `src/lib/history/artifacts.test.ts`), README figures, OG link-preview card, one-command quarterly refresh (`analysis/refresh_all.py`). |
 
 ---
