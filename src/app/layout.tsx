@@ -18,6 +18,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Absolute-URL base for the Open Graph/Twitter card (the committed
+  // src/app/opengraph-image.png). APP_ORIGIN is the canonical site URL in
+  // production; unset locally, where Next falls back to localhost.
+  metadataBase: process.env.APP_ORIGIN
+    ? new URL(process.env.APP_ORIGIN)
+    : undefined,
   title: "Brisbane Bowser Beater",
   description:
     "A web app for Brisbane drivers, combining live fuel price data with an AI-powered fuel strategist.",

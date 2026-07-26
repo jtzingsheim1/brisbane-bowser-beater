@@ -1,8 +1,14 @@
 import Disclosure from "./Disclosure";
 
+// The prose layer of the cycle education. The visual layer — the three-year
+// history and the model overlay — lives in CycleVisuals, always visible; this
+// disclosure carries the background reading for whoever wants it. The second
+// paragraph used to assert the cycle's numbers in prose; the charts now show
+// them, so it's down to one sentence of framing.
+
 export default function CycleEducation() {
   return (
-    <Disclosure summary="Why timing matters — how the Brisbane cycle works">
+    <Disclosure summary="More on how the Brisbane cycle works">
       <div className="space-y-3">
         <p>
           Brisbane retail fuel prices move in recurring cycles &mdash; a
@@ -14,10 +20,8 @@ export default function CycleEducation() {
         </p>
         <p>
           On recent form the cycle runs roughly 39 days and swings about 35c a
-          litre between trough and peak, with prices tending to climb to the
-          peak faster than they ease back down. Those are estimates from the
-          historical price series rather than promises &mdash; but they&rsquo;re
-          why the cycle is worth planning around. Timing your fills with it,
+          litre between trough and peak &mdash; estimates from the historical
+          series (charted above), not promises. Timing your fills with it,
           instead of refuelling whenever the gauge gets low, is where the
           saving comes from.
         </p>

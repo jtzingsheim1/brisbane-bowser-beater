@@ -43,10 +43,27 @@ def csv_resources(dataset_id: str) -> list[dict]:
     return [r for r in resources if (r.get("format") or "").upper() == "CSV"]
 
 
+def resource_url(r: dict) -> str:
+    # Prefer the CKAN datastore dump endpoint over the direct /download/ URL:
+    # the download path sits behind a bot-protection JS challenge that plain
+    # HTTP clients can't pass (observed from cloud egress IPs), while the
+    # datastore API path serves the same rows unchallenged. The dump adds a
+    # leading `_id` column, which cycle_lib ignores (it selects columns by
+    # name). Falls back to the direct URL for non-datastore resources.
+    if r.get("datastore_active"):
+        return f"https://www.data.qld.gov.au/datastore/dump/{r['id']}?bom=false"
+    return r["url"]
+
+
 def download(url: str, dest: Path) -> int:
     req = urllib.request.Request(url, headers={"User-Agent": "bbb-analysis/1.0"})
     with urllib.request.urlopen(req, timeout=300) as resp:
         data = resp.read()
+    if not data:
+        # The direct /download/ path answers bot-challenge requests with an
+        # empty 202 body; caching that as a "successful" CSV poisons the
+        # cache (empty files break the loaders). Treat it as a failure.
+        raise RuntimeError("empty response (likely a bot-challenge page)")
     dest.write_bytes(data)
     return len(data)
 
@@ -67,7 +84,7 @@ def main() -> int:
         print(f"  {len(resources)} CSV resource(s)")
         for r in resources:
             rid = r["id"]
-            url = r["url"]
+            url = resource_url(r)
             dest = DATA_DIR / f"{year}__{rid}.csv"
             if dest.exists() and dest.stat().st_size > 0:
                 print(f"  [cached] {r.get('name', rid)}")

@@ -1,5 +1,6 @@
 import AgentChat from "@/components/AgentChat";
 import CycleEducation from "@/components/CycleEducation";
+import CycleVisuals from "@/components/CycleVisuals";
 import DailyNarrative from "@/components/DailyNarrative";
 import Disclosure from "@/components/Disclosure";
 import PriceChart from "@/components/PriceChart";
@@ -105,6 +106,13 @@ export default async function Home() {
           )}
         </div>
       </section>
+
+      {/* Always-visible cycle context: the three-year history proves the
+          pattern; the overlay shows the fitted model. Static committed data —
+          see src/lib/history/artifacts.ts. */}
+      <div className="mb-10">
+        <CycleVisuals />
+      </div>
 
       <section aria-label="AI fuel strategy agent" className="mb-10">
         <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
