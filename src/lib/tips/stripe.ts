@@ -15,10 +15,13 @@ export function getStripe(): Stripe | null {
     cached = null;
     return null;
   }
-  // Pin the API version explicitly to the one this SDK's types were generated
-  // against. Omitting it makes Stripe use the *account's* dashboard-default
-  // version at runtime, which can silently drift from the typed version and
-  // change response shapes under us; pinning keeps runtime and types locked.
-  cached = new Stripe(key, { apiVersion: "2026-06-24.dahlia" });
+  // No explicit apiVersion: modern stripe-node pins requests to the API
+  // version its types were generated against (stripe.core.js falls back to
+  // the SDK's bundled DEFAULT_API_VERSION and always sends Stripe-Version),
+  // so runtime and types stay locked together by construction — and SDK
+  // bumps can't break the build against a hand-pinned literal. (The old
+  // "omitting falls back to the account's dashboard default" behaviour is
+  // legacy stripe-node; it no longer applies.)
+  cached = new Stripe(key);
   return cached;
 }
