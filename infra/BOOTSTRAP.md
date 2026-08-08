@@ -138,10 +138,15 @@ cat > /tmp/trust.json <<EOF
 EOF
 
 # Least-privilege deploy permissions: only what Terraform needs
-# to manage the bbb-mcp stack. IAM/Lambda/logs actions are
-# scoped to bbb-mcp-* resource names; API Gateway does not
-# support name-scoped ARNs so it is scoped to this region and
-# account instead (the account contains nothing else).
+# to manage the bbb-mcp stack. The IAM actions are scoped to
+# bbb-mcp-SERVER-* (the Lambda execution role Terraform creates,
+# named bbb-mcp-server-exec) -- deliberately NOT bbb-mcp-* , which
+# would also match this deploy role (bbb-mcp-deploy) and let an
+# assumed session rewrite its own policy/trust to escalate to
+# admin. An explicit Deny on the deploy role's own ARN makes that
+# impossible even if the pattern is ever loosened. API Gateway
+# does not support name-scoped ARNs, so it is scoped to this
+# region and account (which contains nothing else).
 cat > /tmp/policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -169,13 +174,24 @@ cat > /tmp/policy.json <<EOF
         "iam:ListRolePolicies", "iam:ListAttachedRolePolicies",
         "iam:ListInstanceProfilesForRole"
       ],
-      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-*"
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*"
+    },
+    {
+      "Sid": "DenySelfModification",
+      "Effect": "Deny",
+      "Action": [
+        "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        "iam:DeleteRole"
+      ],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-deploy"
     },
     {
       "Sid": "PassExecRoleToLambdaOnly",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-*",
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
       "Condition": {
         "StringEquals": { "iam:PassedToService": "lambda.amazonaws.com" }
       }
@@ -297,6 +313,13 @@ All of this is in the repo:
    - Under **Deployment branches and tags**, choose **Selected branches and
      tags** and add a rule for `main`. Only workflow runs from `main` can
      use the environment.
+
+   > **This step is the human-approval gate.** AWS trusts any workflow run
+   > carrying the `environment:aws` identity; the "a human approves every
+   > deploy" property comes entirely from the required-reviewer rule you set
+   > here, not from AWS. If you create the `aws` environment without a
+   > required reviewer, deploys will run unattended. Do not skip the
+   > reviewer tick.
 2. **Add the repository variables.** Settings, **Secrets and variables**,
    **Actions**, **Variables** tab, **New repository variable**. Create the
    three variables exactly as printed by the CloudShell script:

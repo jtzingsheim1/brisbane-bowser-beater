@@ -21,6 +21,20 @@ variable "supabase_url" {
 variable "supabase_anon_key" {
   description = "Supabase publishable (anon) key (public by design)."
   type        = string
+  # Public by design, but marked sensitive so it stays out of plan output.
+  sensitive = true
+}
+
+# Reserved concurrency for the Lambda. Default -1 = no reservation, which is
+# the only value that applies cleanly on a brand-new AWS account: fresh
+# accounts often have a low regional Lambda concurrency limit, and AWS
+# refuses any reservation that would drop unreserved concurrency below 100.
+# The API Gateway usage plan already bounds fan-out; once the account's
+# concurrency limit is raised, set this (e.g. 10) for defense in depth.
+variable "lambda_reserved_concurrency" {
+  description = "Lambda reserved concurrent executions (-1 = unreserved)."
+  type        = number
+  default     = -1
 }
 
 # Abuse/cost caps enforced by the API Gateway usage plan. The free-tier

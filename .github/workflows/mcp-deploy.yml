@@ -6,7 +6,8 @@
 #   policy only matches this repo's `aws` environment, and that environment
 #   requires a human reviewer -- so credentials can only ever be minted for
 #   a run a human has approved, from main.
-# - Third-party actions are pinned to commit SHAs.
+# - Every action is pinned to a commit SHA (this workflow holds OIDC write
+#   access, so no mutable tags).
 # - The stack's API key value never appears in outputs or logs; it is
 #   retrieved by the operator in CloudShell (see infra/BOOTSTRAP.md).
 #
@@ -45,9 +46,9 @@ jobs:
       TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
       TF_VAR_supabase_anon_key: ${{ vars.SUPABASE_ANON_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: "npm"

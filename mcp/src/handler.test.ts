@@ -94,6 +94,35 @@ describe("handler", () => {
     }
   });
 
+  it("rejects JSON-RPC batches (top-level arrays)", async () => {
+    const res = await handler(
+      rpcEvent([rpc("tools/list", {}, 1), rpc("tools/list", {}, 2)]),
+    );
+    expect(res.statusCode).toBe(400);
+    const parsed = JSON.parse(res.body);
+    expect(parsed.error.code).toBe(-32600);
+    expect(parsed.error.message).toContain("Batched");
+  });
+
+  it("rejects a malformed JSON body with a parse error", async () => {
+    const res = await handler({
+      ...rpcEvent({}),
+      body: "{ not json",
+    } as APIGatewayProxyEvent);
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.code).toBe(-32700);
+  });
+
+  it("handles base64-encoded request bodies", async () => {
+    const res = await handler({
+      ...rpcEvent(rpc("tools/list")),
+      body: Buffer.from(JSON.stringify(rpc("tools/list"))).toString("base64"),
+      isBase64Encoded: true,
+    } as APIGatewayProxyEvent);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).result.tools).toHaveLength(3);
+  });
+
   it("answers initialize with server info", async () => {
     const res = await handler(
       rpcEvent(

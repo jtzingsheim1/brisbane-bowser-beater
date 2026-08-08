@@ -80,10 +80,12 @@ Supabase PostgREST  ..... anon-key reads of the same public aggregates
 (`x-api-key`), enforced by API Gateway before any code runs. The same
 gateway usage plan throttles to 5 requests/second (burst 10) and caps usage
 at 100k requests per calendar month, so worst-case cost and abuse are
-bounded at the front door. The key value exists only inside AWS: it is not
-a Terraform output, never appears in workflow logs, and is retrieved by the
-operator directly in CloudShell. Rotation is a two-minute self-serve
-action.
+bounded at the front door. The key value is never a Terraform output and
+never appears in workflow logs; the operator retrieves it directly in
+CloudShell. It does reside (encrypted) in the S3 Terraform state, so the
+set of principals who can read it equals the set who can already call
+`apigateway:get-api-keys` (the deploy role and account admins) -- no
+wider. Rotation is a two-minute self-serve action.
 
 **No long-lived credentials, anywhere.** The AWS account has no IAM users
 and no access keys. Deploys assume a role via GitHub's OIDC provider, and
@@ -107,9 +109,15 @@ approved.
 - Can: serve three read-only tools over data that is already public (the
   site's aggregate forecast, history, and cycle model), reading Supabase
   with the same publishable anon key the website ships to every browser.
-- Cannot: write to anything, reach per-station data (the anon role's
-  grants don't expose it), trigger paid API calls (no Anthropic, no QLD
-  API; only stored aggregates), or mint further access of any kind.
+- Cannot: write to anything (it only ever issues SELECT-style reads and
+  the aggregate RPC), trigger paid API calls (no Anthropic, no QLD API;
+  only stored aggregates), or mint further access of any kind.
+- The server's own tools return Brisbane-wide aggregates only, never
+  per-station rows, matching the website. (The scope of the shared
+  publishable anon key is a database-layer concern owned by the main app,
+  not something this server widens.)
+- Batched JSON-RPC requests are rejected, so one metered request maps to
+  at most one tool execution.
 - Upstream errors are collapsed to a generic message; internal details and
   upstream status codes are not surfaced to callers.
 
