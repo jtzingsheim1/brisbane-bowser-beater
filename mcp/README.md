@@ -108,7 +108,8 @@ approved.
 
 - Can: serve three read-only tools over data that is already public (the
   site's aggregate forecast, history, and cycle model), reading Supabase
-  with the same publishable anon key the website ships to every browser.
+  with the same publishable anon key the website uses server-side. The key
+  grants only aggregate read paths (grants/RLS enforced in the database).
 - Cannot: write to anything (it only ever issues SELECT-style reads and
   the aggregate RPC), trigger paid API calls (no Anthropic, no QLD API;
   only stored aggregates), or mint further access of any kind.

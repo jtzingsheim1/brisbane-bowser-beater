@@ -337,9 +337,9 @@ All of this is in the repo:
    These are variables rather than secrets on purpose: none of them are
    sensitive. A role ARN is not a credential (assuming the role requires a
    GitHub OIDC token from an approved run of this repo's `aws`
-   environment), and the Supabase URL and anon key are public by design;
-   they ship in the website's client bundle, with Postgres grants/RLS
-   limiting what the anon role can read.
+   environment), and the Supabase URL and anon key are the publishable
+   (low-privilege) tier, with Postgres grants/RLS limiting the anon role
+   to aggregate read paths only.
 
 That's it. No AWS keys were created, and none will be. When the deploy
 workflow first runs you will see a review request in the repo's Actions tab;

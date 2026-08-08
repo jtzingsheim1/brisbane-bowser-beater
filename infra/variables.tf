@@ -4,10 +4,11 @@ variable "aws_region" {
   default     = "ap-southeast-2"
 }
 
-# Both Supabase values are public by design: they ship in the website's
-# client bundle, and Postgres grants/RLS limit the anon role to the same
-# aggregate read paths the site itself uses. They are variables (not
-# hardcoded) purely so key rotation never needs a code change.
+# Both Supabase values are the publishable (low-privilege) tier: Postgres
+# grants/RLS limit the anon role to the same aggregate read paths the site
+# itself uses, so possession of the key confers nothing beyond public data.
+# They are variables (not hardcoded) purely so key rotation never needs a
+# code change.
 variable "supabase_url" {
   description = "Supabase project URL (public)."
   type        = string

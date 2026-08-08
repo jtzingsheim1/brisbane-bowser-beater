@@ -4,9 +4,10 @@
 // shapes below against one host, which keeps the bundle small and the
 // security review surface enumerable.
 //
-// The anon key is public by design (it ships in the website's client bundle);
-// row access is governed by Postgres grants/RLS on the Supabase side, which
-// only expose the aggregate read paths used here.
+// The anon key is Supabase's publishable tier, held server-side by both the
+// website and this Lambda; row access is governed by Postgres grants/RLS on
+// the Supabase side, which only expose aggregate read paths (tables like
+// `forecasts`, plus the security-definer RPCs from migration 0013).
 
 const FUEL_NAME = "Unleaded";
 const FORECAST_REGION = "brisbane_metro";
@@ -84,14 +85,13 @@ function toIsoDate(date: Date): string {
 // Latest observed event date, used to anchor the history window (mirrors the
 // website: while live ingestion lags, "last N days from today" would return a
 // flat carry-forward tail, so we anchor at the newest real event instead).
+// Security-definer RPC (migration 0013) — anon has no direct table access to
+// price_snapshots, and this server never needs any.
 async function latestEventDate(e: Env): Promise<Date | null> {
-  const rows = (await rest(
-    e,
-    "price_snapshots" +
-      `?select=transaction_date_utc&fuel_name=eq.${FUEL_NAME}` +
-      "&order=transaction_date_utc.desc&limit=1",
-  )) as Array<{ transaction_date_utc: string }>;
-  const iso = rows[0]?.transaction_date_utc;
+  const iso = (await rest(e, "rpc/snapshot_event_bound", {
+    method: "POST",
+    body: { p_fuel_name: FUEL_NAME, p_source: null, p_earliest: false },
+  })) as string | null;
   return iso ? new Date(iso) : null;
 }
 

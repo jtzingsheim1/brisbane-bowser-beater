@@ -35,7 +35,7 @@ async function callTool(name: string, args: Record<string, unknown> = {}) {
   return parsed.result;
 }
 
-const SNAPSHOT_ROWS = [{ transaction_date_utc: "2026-08-07T20:00:00+00:00" }];
+const LATEST_EVENT_ISO = "2026-08-07T20:00:00+00:00";
 const HISTORY_ROWS = [
   { day: "2026-08-06", avg_price: 1.6891, station_count: 310 },
   { day: "2026-08-07", avg_price: 1.7012, station_count: 305 },
@@ -54,8 +54,9 @@ function mockSupabase() {
   return vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
     const url = String(input);
     let body: unknown;
-    if (url.includes("/rest/v1/price_snapshots")) {
-      body = SNAPSHOT_ROWS;
+    if (url.includes("/rest/v1/rpc/snapshot_event_bound")) {
+      // Scalar-returning RPC: PostgREST serialises a bare JSON string.
+      body = LATEST_EVENT_ISO;
     } else if (url.includes("/rest/v1/rpc/brisbane_daily_avg_u91")) {
       body = HISTORY_ROWS;
     } else if (url.includes("select=generated_at")) {
