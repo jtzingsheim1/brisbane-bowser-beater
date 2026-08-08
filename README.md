@@ -150,6 +150,16 @@ The data pipeline runs entirely on **GitHub Actions** writing straight to
 Supabase, keeping the polling off the hosting tier. The web app is pure
 TypeScript; the Python analysis never runs on the server.
 
+### MCP server
+
+The same public forecast data is also served to AI clients through a small
+read-only **[MCP server](mcp/README.md)** (`mcp/` + `infra/`): an AWS
+Lambda behind an auth-gated API Gateway endpoint, defined as a single
+Terraform stack and deployed exclusively via GitHub Actions OIDC, so no
+long-lived AWS credentials exist anywhere. Three tools: the live forecast,
+recent observed history, and the fitted cycle model. Details and the full
+security posture are in [`mcp/README.md`](mcp/README.md).
+
 ### Cost & operational safety
 
 The app is built to be cheap to run and safe to leave unattended:
