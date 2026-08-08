@@ -73,3 +73,6 @@ fuel_app_brief.md
 # mcp subproject
 /mcp/dist/
 /mcp/node_modules/
+
+# terraform local working dir
+/infra/.terraform/
