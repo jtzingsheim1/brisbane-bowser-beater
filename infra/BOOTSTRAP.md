@@ -269,9 +269,15 @@ echo
 echo "  Repository variables (Settings > Secrets and variables"
 echo "  > Actions > Variables tab > New repository variable):"
 echo
-echo "    AWS_ROLE_ARN    = arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-deploy"
-echo "    AWS_REGION      = ${REGION}"
-echo "    TF_STATE_BUCKET = ${STATE_BUCKET}"
+echo "    AWS_ROLE_ARN      = arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-deploy"
+echo "    AWS_REGION        = ${REGION}"
+echo "    TF_STATE_BUCKET   = ${STATE_BUCKET}"
+echo
+echo "  Plus two more (values from the Vercel project env or"
+echo "  .env.local -- see Step 4 of the runbook):"
+echo
+echo "    SUPABASE_URL      (= NEXT_PUBLIC_SUPABASE_URL)"
+echo "    SUPABASE_ANON_KEY (= NEXT_PUBLIC_SUPABASE_ANON_KEY)"
 echo "=========================================================="
 ```
 
@@ -298,10 +304,19 @@ All of this is in the repo:
    - `AWS_REGION`
    - `TF_STATE_BUCKET`
 
+   Then two more, so the deployed server knows where to read its data.
+   Both values already exist in the Vercel project's environment variables
+   (Vercel dashboard, the BBB project, Settings, Environment Variables),
+   or in your local `.env.local`:
+   - `SUPABASE_URL` (same value as `NEXT_PUBLIC_SUPABASE_URL`)
+   - `SUPABASE_ANON_KEY` (same value as `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+
    These are variables rather than secrets on purpose: none of them are
-   sensitive (a role ARN is not a credential; assuming the role requires a
+   sensitive. A role ARN is not a credential (assuming the role requires a
    GitHub OIDC token from an approved run of this repo's `aws`
-   environment).
+   environment), and the Supabase URL and anon key are public by design;
+   they ship in the website's client bundle, with Postgres grants/RLS
+   limiting what the anon role can read.
 
 That's it. No AWS keys were created, and none will be. When the deploy
 workflow first runs you will see a review request in the repo's Actions tab;
