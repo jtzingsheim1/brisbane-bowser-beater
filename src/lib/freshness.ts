@@ -22,20 +22,17 @@ function configuredThresholdMinutes(): number {
 
 async function fetchLatestIngestedAt(): Promise<Date | null> {
   const client = supabaseReadOnly();
-  const { data, error } = await client
-    .from("price_snapshots")
-    .select("ingested_at")
-    .order("ingested_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Security-definer RPC (migration 0013): anon reads the one timestamp the
+  // gate needs without any direct grant on price_snapshots.
+  const { data, error } = await client.rpc("latest_snapshot_ingested_at");
 
   if (error) {
     throw error;
   }
-  if (!data?.ingested_at) {
+  if (!data) {
     return null;
   }
-  return new Date(data.ingested_at as string);
+  return new Date(data as string);
 }
 
 // Cached across requests for CACHE_TTL_SECONDS so a burst of page renders
