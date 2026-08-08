@@ -51,21 +51,17 @@ const getCachedDailyU91 = unstable_cache(
 
 async function fetchLatestEventDate(): Promise<Date | null> {
   const client = supabaseReadOnly();
-  const { data, error } = await client
-    .from("price_snapshots")
-    .select("transaction_date_utc")
-    .eq("fuel_name", "Unleaded")
-    .order("transaction_date_utc", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Security-definer RPC (migration 0013) — no direct price_snapshots read.
+  const { data, error } = await client.rpc("snapshot_event_bound", {
+    p_fuel_name: "Unleaded",
+    p_source: null,
+    p_earliest: false,
+  });
 
   if (error) {
     throw error;
   }
-  if (!data?.transaction_date_utc) {
-    return null;
-  }
-  return new Date(data.transaction_date_utc as string);
+  return data ? new Date(data as string) : null;
 }
 
 const getCachedLatestEventIso = unstable_cache(
@@ -165,21 +161,17 @@ async function latestDayForSource(
   ascending: boolean,
 ): Promise<string | null> {
   const client = supabaseReadOnly();
-  const { data, error } = await client
-    .from("price_snapshots")
-    .select("transaction_date_utc")
-    .eq("fuel_name", "Unleaded")
-    .eq("data_source", source)
-    .order("transaction_date_utc", { ascending })
-    .limit(1)
-    .maybeSingle();
+  // Security-definer RPC (migration 0013): ascending=true means "earliest".
+  const { data, error } = await client.rpc("snapshot_event_bound", {
+    p_fuel_name: "Unleaded",
+    p_source: source,
+    p_earliest: ascending,
+  });
 
   if (error) {
     throw error;
   }
-  return data?.transaction_date_utc
-    ? toIsoDate(new Date(data.transaction_date_utc as string))
-    : null;
+  return data ? toIsoDate(new Date(data as string)) : null;
 }
 
 // Fraction of core stations that must have reported a live price before a day's
@@ -194,52 +186,22 @@ const LIVE_COVERAGE_THRESHOLD = 0.8;
 // end of the "live ramp-up" during which the average can't be trusted. Returns
 // null if there's no live data; returns the latest live day if coverage has
 // never yet crossed the threshold (nothing trustworthy yet).
+//
+// Computed in SQL (security-definer RPC, migration 0013) since 2026-08: the
+// old implementation fetched every live per-station row into Node and walked
+// it — the parked "growth cliff" audit item — and needed anon table grants
+// that the aggregate-only posture is retiring. Same semantics, one date out.
 async function liveCoverageRampEnd(): Promise<string | null> {
   const client = supabaseReadOnly();
-  const { count: coreCount, error: coreError } = await client
-    .from("sites")
-    .select("*", { count: "exact", head: true })
-    .eq("state", "QLD")
-    .gte("postcode", "4000")
-    .lte("postcode", "4179");
-  if (coreError) {
-    throw coreError;
-  }
-  if (!coreCount) {
-    return null;
-  }
-
-  const { data: live, error } = await client
-    .from("price_snapshots")
-    .select("site_id, transaction_date_utc")
-    .eq("fuel_name", "Unleaded")
-    .eq("data_source", "live_api")
-    .order("transaction_date_utc", { ascending: true });
+  const { data, error } = await client.rpc("live_coverage_ramp_end", {
+    p_fuel_name: "Unleaded",
+    p_threshold: LIVE_COVERAGE_THRESHOLD,
+  });
   if (error) {
     throw error;
   }
-  if (!live || live.length === 0) {
-    return null;
-  }
-
-  const needed = coreCount * LIVE_COVERAGE_THRESHOLD;
-  const seen = new Set<unknown>();
-  for (const row of live) {
-    seen.add(row.site_id);
-    if (seen.size >= needed) {
-      // First day coverage is adequate → trustworthy data starts here, so the
-      // ramp (no-data) ends the day before.
-      return addUtcDays(
-        toIsoDate(new Date(row.transaction_date_utc as string)),
-        -1,
-      );
-    }
-  }
-  // Threshold never reached: no day is trustworthy yet — extend through the
-  // most recent live day.
-  return toIsoDate(
-    new Date(live[live.length - 1].transaction_date_utc as string),
-  );
+  // PostgREST serialises the date as "YYYY-MM-DD", already our day format.
+  return (data as string | null) ?? null;
 }
 
 // A "deadzone" is a span of days we can't show a trustworthy Brisbane average
