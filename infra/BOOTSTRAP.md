@@ -49,15 +49,26 @@ credit/debit card ready.
    IAM users. This account will never have long-lived credentials. That is
    deliberate and is part of the security posture of the project.
 
-## Step 3 -- CloudShell bootstrap (~5 min, one paste)
+## Step 3 -- CloudShell bootstrap (~10 min, one paste)
 
-1. In the console's top-right region selector, choose
+1. **First, on GitHub: opt the repo into immutable OIDC subject claims.**
+   In the repo, go to **Settings, Actions**, and find the **OIDC** settings
+   (GitHub shows a toggle for the immutable subject claim format, plus a
+   preview of the exact subject your repo will send). Enable it, then
+   confirm the previewed subject prefix matches the `GITHUB_SUB` value in
+   the script below (name@numeric-id for both the account and the repo).
+   This permanently ties the AWS trust policy to the repo's numeric IDs,
+   so a recycled account or repo name can never mint matching tokens.
+   Treat the toggle as one-way. If the preview differs from the script's
+   `GITHUB_SUB` in any way, paste the previewed value into `GITHUB_SUB`
+   before running.
+2. In the AWS console's top-right region selector, choose
    **Asia Pacific (Sydney) ap-southeast-2**.
-2. Open **CloudShell** (the terminal icon in the top toolbar, or search
+3. Open **CloudShell** (the terminal icon in the top toolbar, or search
    "CloudShell").
-3. **Edit the two variables at the top** of the script below (your alert
-   email; the repo is already correct), then paste the whole thing into
-   CloudShell and press Enter.
+4. **Edit the variables at the top** of the script below (your alert
+   email; the subject claim is prefilled from this repo's IDs), then paste
+   the whole thing into CloudShell and press Enter.
 
 The script is idempotent: if a resource already exists it says so and moves
 on, so it is safe to re-run if anything is interrupted.
@@ -67,8 +78,11 @@ on, so it is safe to re-run if anything is interrupted.
 # BBB MCP one-time bootstrap. Region: ap-southeast-2 (Sydney).
 # EDIT THESE TWO LINES, then paste the whole script.
 # ============================================================
-ALERT_EMAIL="you@example.com"                     # billing alert email
-GITHUB_REPO="jtzingsheim1/brisbane-bowser-beater" # owner/repo
+ALERT_EMAIL="you@example.com"   # billing alert email
+# The immutable OIDC subject this repo's gated `aws` environment sends
+# (Step 3.1). Numeric IDs are the permanent GitHub account and repo IDs.
+# Must EXACTLY match the preview on the repo's OIDC settings page.
+GITHUB_SUB="repo:jtzingsheim1@43869157/brisbane-bowser-beater@1245389373:environment:aws"
 # ============================================================
 
 set -u
@@ -130,7 +144,7 @@ cat > /tmp/trust.json <<EOF
     "Condition": {
       "StringEquals": {
         "${OIDC_URL}:aud": "sts.amazonaws.com",
-        "${OIDC_URL}:sub": "repo:${GITHUB_REPO}:environment:aws"
+        "${OIDC_URL}:sub": "${GITHUB_SUB}"
       }
     }
   }]
@@ -281,7 +295,13 @@ rm -f /tmp/trust.json /tmp/policy.json /tmp/budget.json /tmp/budget-notify.json
 
 echo
 echo "=========================================================="
-echo "Bootstrap complete. Now add these in GitHub (Step 4):"
+echo "Bootstrap complete."
+echo
+echo "  Trust policy pinned to OIDC subject:"
+echo "    ${GITHUB_SUB}"
+echo "  (verify this matches the repo's OIDC settings preview)"
+echo
+echo "Now add these in GitHub (Step 4):"
 echo
 echo "  Repository variables (Settings > Secrets and variables"
 echo "  > Actions > Variables tab > New repository variable):"
@@ -301,19 +321,16 @@ echo "=========================================================="
 4. Copy the three variable values the script prints at the end; Step 4 needs
    them.
 
-**A note on what the trust policy pins.** The deploy role trusts the GitHub
-identity string `repo:jtzingsheim1/brisbane-bowser-beater:environment:aws`,
-which pins by *name*. Names can in principle be recycled: if the GitHub
-account or repository were ever deleted or renamed and someone re-registered
-the same names, they could mint matching tokens. Two implications:
-
-- Do not delete or rename the GitHub account or repository while this AWS
-  account exists without updating (or removing) the deploy role first.
-- GitHub now supports an opt-in "immutable" subject claim that appends the
-  permanent numeric account and repository IDs to the name, making recycled
-  names useless. If you ever opt this repository into that setting, the
-  trust policy's `sub` value must be updated to the new format at the same
-  time or deploys will stop authenticating.
+**A note on what the trust policy pins.** With the immutable subject claim
+enabled (Step 3.1), the deploy role trusts a GitHub identity that embeds
+the account's and repository's permanent numeric IDs, not just their
+names. A recycled or squatted name can therefore never mint a matching
+token, even if the account or repo were deleted and re-registered by
+someone else. One operational consequence: renaming or transferring the
+repository changes the subject's name portion, so deploys would stop
+authenticating (a safe, fail-closed outcome) until the trust policy is
+updated to the new subject; re-running the Step 3 script with an updated
+`GITHUB_SUB` refreshes it in place.
 
 ## Step 4 -- GitHub environment and variables (~10 min)
 
