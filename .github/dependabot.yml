@@ -32,3 +32,22 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # MCP subproject (mcp/ + infra/): its own npm tree, plus the pinned
+  # Terraform providers. Same weekly cadence and grouping philosophy; the
+  # CI `mcp` job gates these PRs (typecheck/tests/bundle + tf validate).
+  - package-ecosystem: npm
+    directory: "/mcp"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: terraform
+    directory: "/infra"
+    schedule:
+      interval: weekly
