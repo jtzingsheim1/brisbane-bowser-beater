@@ -55,13 +55,16 @@ credit/debit card ready.
    In the repo, go to **Settings, Actions**, and find the **OIDC** settings
    (GitHub shows a toggle for the immutable subject claim format, plus a
    preview of the exact subject your repo will send). Enable it, then
-   confirm the previewed subject prefix matches the `GITHUB_SUB` value in
-   the script below (name@numeric-id for both the account and the repo).
-   This permanently ties the AWS trust policy to the repo's numeric IDs,
-   so a recycled account or repo name can never mint matching tokens.
-   Treat the toggle as one-way. If the preview differs from the script's
-   `GITHUB_SUB` in any way, paste the previewed value into `GITHUB_SUB`
-   before running.
+   confirm the previewed subject matches the FRONT PORTION of the
+   `GITHUB_SUB` value in the script below (name@numeric-id for both the
+   account and the repo). The preview shows only that prefix; the
+   `:environment:aws` tail is appended by GitHub at token time because
+   the deploy job runs in the `aws` environment, so the preview is not
+   expected to include it. This permanently ties the AWS trust policy to
+   the repo's numeric IDs, so a recycled account or repo name can never
+   mint matching tokens. Treat the toggle as one-way. If the previewed
+   prefix differs from the script's in any way, update `GITHUB_SUB` to
+   `<previewed-prefix>:environment:aws` before running.
 2. In the AWS console's top-right region selector, choose
    **Asia Pacific (Sydney) ap-southeast-2**.
 3. Open **CloudShell** (the terminal icon in the top toolbar, or search
