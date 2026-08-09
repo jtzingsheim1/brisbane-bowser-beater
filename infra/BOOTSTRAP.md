@@ -84,7 +84,8 @@ on, so it is safe to re-run if anything is interrupted.
 ALERT_EMAIL="you@example.com"   # billing alert email
 # The immutable OIDC subject this repo's gated `aws` environment sends
 # (Step 3.1). Numeric IDs are the permanent GitHub account and repo IDs.
-# Must EXACTLY match the preview on the repo's OIDC settings page.
+# The part before ":environment:aws" must exactly match the prefix shown
+# by the repo's OIDC settings preview (the tail is added at token time).
 GITHUB_SUB="repo:jtzingsheim1@43869157/brisbane-bowser-beater@1245389373:environment:aws"
 # ============================================================
 
