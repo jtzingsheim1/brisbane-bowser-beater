@@ -267,12 +267,13 @@ cat > /tmp/budget-notify.json <<EOF
 }]
 EOF
 if aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
-    --budget-name bbb-mcp-zero-spend >/dev/null 2>&1; then
+    --budget-name bbb-mcp-zero-spend --region us-east-1 >/dev/null 2>&1; then
   echo "Budget already exists"
 else
   aws budgets create-budget --account-id "${ACCOUNT_ID}" \
     --budget file:///tmp/budget.json \
-    --notifications-with-subscribers file:///tmp/budget-notify.json
+    --notifications-with-subscribers file:///tmp/budget-notify.json \
+    --region us-east-1
   echo "Zero-spend budget created (alerts -> ${ALERT_EMAIL})"
 fi
 
@@ -299,6 +300,20 @@ echo "=========================================================="
 
 4. Copy the three variable values the script prints at the end; Step 4 needs
    them.
+
+**A note on what the trust policy pins.** The deploy role trusts the GitHub
+identity string `repo:jtzingsheim1/brisbane-bowser-beater:environment:aws`,
+which pins by *name*. Names can in principle be recycled: if the GitHub
+account or repository were ever deleted or renamed and someone re-registered
+the same names, they could mint matching tokens. Two implications:
+
+- Do not delete or rename the GitHub account or repository while this AWS
+  account exists without updating (or removing) the deploy role first.
+- GitHub now supports an opt-in "immutable" subject claim that appends the
+  permanent numeric account and repository IDs to the name, making recycled
+  names useless. If you ever opt this repository into that setting, the
+  trust policy's `sub` value must be updated to the new format at the same
+  time or deploys will stop authenticating.
 
 ## Step 4 -- GitHub environment and variables (~10 min)
 
