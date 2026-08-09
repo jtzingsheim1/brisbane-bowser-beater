@@ -321,6 +321,27 @@ Most conventions inherit from the global standards. Project-specific notes:
 
 ---
 
+## MCP server subproject (`mcp/` + `infra/`)
+
+A cleanly bounded subproject serving BBB's public forecast data to AI clients
+over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
+
+- `mcp/` -- TypeScript Lambda, own `package.json`/lockfile, three read-only
+  tools (`get_forecast`, `get_recent_history`, `get_cycle_model`). Plain-fetch
+  Supabase anon reads; `cycle_params.json` bundled at build time. No paid API
+  calls anywhere.
+- `infra/` -- single Terraform root module (Lambda + REST API Gateway with
+  API key + usage plan). `terraform destroy` = full decommission.
+- Deploys ONLY via `.github/workflows/mcp-deploy.yml` (GitHub OIDC into the
+  `aws` environment, human-approval gated). No long-lived AWS credentials
+  exist anywhere -- sessions must never hold AWS keys. One-time account setup:
+  `infra/BOOTSTRAP.md`.
+- Security posture documented in `mcp/README.md`. The language discipline
+  (Legal hygiene above) applies to every string the server ships and is
+  enforced by a test.
+- House style for this subproject's public docs: no em dashes (use " -- " or
+  restructure).
+
 ## Where to look next
 
 - **`PLAN.md`** — phase plan and current status

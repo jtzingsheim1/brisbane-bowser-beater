@@ -69,3 +69,10 @@ venv/
 fuel_app_brief.md
 *_brief.md
 *.private.md
+
+# mcp subproject
+/mcp/dist/
+/mcp/node_modules/
+
+# terraform local working dir
+/infra/.terraform/

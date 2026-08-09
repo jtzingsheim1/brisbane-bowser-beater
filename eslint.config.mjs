@@ -15,6 +15,9 @@ const eslintConfig = defineConfig([
     // Python analysis pipeline — its own venv (.venv/) ships thousands of
     // vendored JS files (jupyter et al.) that have nothing to do with our TS.
     "analysis/**",
+    // MCP subproject — own package.json/tsconfig; checked by the CI `mcp`
+    // job (tsc + vitest + esbuild), not by the root toolchain.
+    "mcp/**",
   ]),
 ]);
 
