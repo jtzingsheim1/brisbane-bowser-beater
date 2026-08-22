@@ -15,6 +15,7 @@ import {
   DEFAULT_RESULTS,
   MAX_QUERY_CHARS,
   MAX_RESULTS,
+  meetsLanguageDiscipline,
   ragConfigFromEnv,
   searchDocs,
   type RagConfig,
@@ -35,8 +36,12 @@ const INSTRUCTIONS =
   "average U91 (regular unleaded) in AUD per litre; there is no per-station " +
   "data. Forecasts are estimates, not guarantees. Typical use: call " +
   "get_forecast for the forward view, get_recent_history for observed " +
-  "context, and get_cycle_model for the long-run cycle characterisation. " +
-  "For questions about the project itself (methodology, data licence, " +
+  "context, and get_cycle_model for the long-run cycle characterisation.";
+
+// Appended only when the docs tools are actually registered, so the
+// instructions never advertise tools that tools/list does not carry.
+const RAG_INSTRUCTIONS =
+  " For questions about the project itself (methodology, data licence, " +
   "architecture), use search_docs to find passages in its documentation " +
   "or ask_docs for a cited answer generated from those docs.";
 
@@ -56,9 +61,16 @@ function errorResult(message: string) {
 }
 
 export function buildServer(): McpServer {
+  // Read once up front: it decides both the instructions string and
+  // whether the docs tools are registered at all.
+  const ragConfig = ragConfigFromEnv();
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: INSTRUCTIONS },
+    {
+      instructions: ragConfig
+        ? INSTRUCTIONS + RAG_INSTRUCTIONS
+        : INSTRUCTIONS,
+    },
   );
 
   server.registerTool(
@@ -168,7 +180,6 @@ export function buildServer(): McpServer {
   // The docs Q&A tools exist only when the RAG stack is deployed and wired
   // in via environment (infra/rag.tf), so tools/list always reflects what
   // can actually be served.
-  const ragConfig = ragConfigFromEnv();
   if (ragConfig) {
     registerRagTools(server, ragConfig);
   }
@@ -244,6 +255,16 @@ function registerRagTools(server: McpServer, config: RagConfig): void {
     async ({ question }) => {
       try {
         const { answer, citations } = await askDocs(config, question);
+        if (!meetsLanguageDiscipline(answer)) {
+          // Runtime backstop for the project's language discipline: a
+          // caller-steered generation that drifts into prohibited framing
+          // is dropped rather than served from this endpoint.
+          return errorResult(
+            "The generated answer did not meet this project's wording " +
+              "guidelines, so it was not returned. Try rephrasing the " +
+              "question.",
+          );
+        }
         return jsonResult({ answer, citations, attribution: ATTRIBUTION });
       } catch {
         return errorResult(

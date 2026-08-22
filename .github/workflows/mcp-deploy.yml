@@ -107,9 +107,19 @@ jobs:
           DS_ID=$(terraform output -raw data_source_id)
           BUCKET=$(terraform output -raw corpus_bucket)
 
+          # Entries are validated inline (not only by the unit test that
+          # runs earlier in this job): repo-relative markdown paths with a
+          # conservative character set, no traversal, no absolute paths.
           STAGE=$(mktemp -d)
           while IFS= read -r entry; do
             case "$entry" in ''|'#'*) continue ;; esac
+            case "$entry" in
+              /*|*..*|*[!A-Za-z0-9._/-]*)
+                echo "Refusing unsafe manifest entry: $entry"; exit 1 ;;
+              *.md) ;;
+              *)
+                echo "Refusing non-markdown manifest entry: $entry"; exit 1 ;;
+            esac
             mkdir -p "$STAGE/$(dirname "$entry")"
             cp "../$entry" "$STAGE/$entry"
           done < ../mcp/corpus-manifest.txt
@@ -121,11 +131,17 @@ jobs:
             --query 'ingestionJob.ingestionJobId' --output text)
           echo "Started ingestion job $JOB_ID"
           for _ in $(seq 1 60); do
-            STATUS=$(aws bedrock-agent get-ingestion-job \
+            # A transient poll failure (throttle, 5xx) is not an ingestion
+            # failure; keep polling and let the loop's timeout decide.
+            if ! STATUS=$(aws bedrock-agent get-ingestion-job \
               --knowledge-base-id "$KB_ID" \
               --data-source-id "$DS_ID" \
               --ingestion-job-id "$JOB_ID" \
-              --query 'ingestionJob.status' --output text)
+              --query 'ingestionJob.status' --output text); then
+              echo "Status poll failed; retrying"
+              sleep 10
+              continue
+            fi
             echo "Ingestion status: $STATUS"
             case "$STATUS" in
               COMPLETE)

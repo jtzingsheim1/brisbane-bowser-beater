@@ -15,6 +15,7 @@ import {
   RetrieveCommand,
   RetrieveAndGenerateCommand,
 } from "@aws-sdk/client-bedrock-agent-runtime";
+import { BANNED_LANGUAGE } from "./banned-language.js";
 
 export const MAX_QUERY_CHARS = 300;
 export const MAX_RESULTS = 8;
@@ -39,13 +40,19 @@ type RagClient = Pick<BedrockAgentRuntimeClient, "send">;
 let overrideClient: RagClient | undefined;
 let defaultClient: RagClient | undefined;
 
-// maxAttempts 2 keeps one retry for transient faults while staying well
-// inside the Lambda's 25s budget for the worst-case generation round trip.
+// Single attempt with a bounded socket timeout: a stalled upstream call
+// must degrade to a graceful tool error inside the Lambda's 25s budget
+// (mirroring the 6s fetch timeouts in data.ts), and an SDK retry would
+// double the worst-case generation spend the cost-guard arithmetic in
+// mcp/README.md is built on.
 function client(): RagClient {
   if (overrideClient) {
     return overrideClient;
   }
-  defaultClient ??= new BedrockAgentRuntimeClient({ maxAttempts: 2 });
+  defaultClient ??= new BedrockAgentRuntimeClient({
+    maxAttempts: 1,
+    requestHandler: { requestTimeout: 20_000, connectionTimeout: 3_000 },
+  });
   return defaultClient;
 }
 
@@ -118,6 +125,15 @@ export type DocAnswer = {
   answer: string;
   citations: Array<{ excerpt: string; sources: string[] }>;
 };
+
+// Runtime guard on generated text: the corpus and every static string are
+// already swept by tests, but a caller can try to steer generation toward
+// the framing the project's language discipline prohibits, so answers are
+// checked before they are returned.
+export function meetsLanguageDiscipline(text: string): boolean {
+  const lower = text.toLowerCase();
+  return !BANNED_LANGUAGE.some((term) => lower.includes(term));
+}
 
 export async function askDocs(
   config: RagConfig,

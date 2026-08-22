@@ -272,6 +272,66 @@ describe("docs Q&A tools", () => {
     }
   });
 
+  it("maps missing locations and scores defensively", async () => {
+    setRagClientForTests({
+      send: vi.fn(async () => ({
+        retrievalResults: [{ content: { text: "orphan chunk" } }],
+      })),
+    });
+    const res = await handler(
+      rpcEvent(
+        rpc("tools/call", {
+          name: "search_docs",
+          arguments: { query: "where does this come from" },
+        }),
+      ),
+    );
+    const payload = JSON.parse(JSON.parse(res.body).result.content[0].text);
+    expect(payload.results[0]).toEqual({
+      text: "orphan chunk",
+      source: "unknown",
+      score: null,
+    });
+  });
+
+  it("ask_docs handles a bare generation response cleanly", async () => {
+    setRagClientForTests({ send: vi.fn(async () => ({})) });
+    const res = await handler(
+      rpcEvent(
+        rpc("tools/call", {
+          name: "ask_docs",
+          arguments: { question: "anything at all here" },
+        }),
+      ),
+    );
+    const payload = JSON.parse(JSON.parse(res.body).result.content[0].text);
+    expect(payload.answer).toBe("");
+    expect(payload.citations).toEqual([]);
+  });
+
+  it("withholds generated answers that break the language discipline", async () => {
+    // Term assembled at runtime so this test file itself stays clean.
+    const banned = ["price", " ", "goug", "ing"].join("");
+    setRagClientForTests({
+      send: vi.fn(async () => ({
+        output: { text: `Retailers are ${banned} at the peak.` },
+        citations: [],
+      })),
+    });
+    const res = await handler(
+      rpcEvent(
+        rpc("tools/call", {
+          name: "ask_docs",
+          arguments: { question: "describe the peak" },
+        }),
+      ),
+    );
+    const result = JSON.parse(res.body).result;
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("wording guidelines");
+    expect(result.content[0].text).not.toContain(banned);
+  });
+
   it("search_docs handles an empty retrieval cleanly", async () => {
     setRagClientForTests({
       send: vi.fn(async () => ({ retrievalResults: [] })),

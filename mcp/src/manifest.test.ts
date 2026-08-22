@@ -39,6 +39,27 @@ describe("corpus manifest", () => {
     }
   });
 
+  it("is formatted exactly as the deploy shell parser requires", () => {
+    // The workflow's `while read` loop does not trim and needs a trailing
+    // newline; enforce the strict format here so the unit test and the
+    // shell parser can never disagree about an entry.
+    const raw = readFileSync(
+      join(REPO_ROOT, "mcp/corpus-manifest.txt"),
+      "utf-8",
+    );
+    expect(raw.endsWith("\n"), "must end with a newline").toBe(true);
+    for (const line of raw.split("\n")) {
+      expect(line, "no leading/trailing whitespace").toBe(line.trim());
+      expect(line.includes("\r"), "no carriage returns").toBe(false);
+    }
+    for (const entry of manifestEntries()) {
+      expect(
+        /^[A-Za-z0-9._/-]+$/.test(entry),
+        `${entry} must use the conservative character set the workflow enforces`,
+      ).toBe(true);
+    }
+  });
+
   it("never lists internal working notes", () => {
     const entries = manifestEntries();
     for (const excluded of ["CLAUDE.md", "PLAN.md", "AGENTS.md"]) {

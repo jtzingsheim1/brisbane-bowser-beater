@@ -2,6 +2,15 @@ variable "aws_region" {
   description = "Deployment region. Sydney, matching the audience of the data."
   type        = string
   default     = "ap-southeast-2"
+
+  # The RAG stack pins Claude Haiku 4.5 foundation-model ARNs to the au.
+  # inference profile's two destination regions (see rag.tf), so deploying
+  # anywhere else would silently mismatch the profile ARN in the Lambda
+  # environment. Fail at plan time instead.
+  validation {
+    condition     = contains(["ap-southeast-2", "ap-southeast-4"], var.aws_region)
+    error_message = "aws_region must be an au. inference-profile destination region (ap-southeast-2 or ap-southeast-4)."
+  }
 }
 
 # Both Supabase values are the publishable (low-privilege) tier: Postgres
@@ -57,7 +66,10 @@ variable "throttle_burst_limit" {
 }
 
 variable "monthly_quota" {
-  description = "Hard cap on requests per API key per calendar month."
+  # API Gateway enforces usage-plan quotas on a best-effort basis (small
+  # overshoot under burst is possible); the budget action in rag.tf is the
+  # firm backstop behind it.
+  description = "Cap on requests per API key per calendar month."
   type        = number
   default     = 500
 }
@@ -74,6 +86,9 @@ variable "budget_limit_usd" {
 variable "budget_alert_email" {
   description = "Email notified when the budget action triggers."
   type        = string
+  # Not a credential, but a personal address: sensitive keeps it out of
+  # plan/apply output in the public repo's workflow logs.
+  sensitive = true
 
   validation {
     condition     = can(regex("^[^@\\s]+@[^@\\s]+$", var.budget_alert_email))

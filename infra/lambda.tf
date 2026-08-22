@@ -14,7 +14,16 @@ data "archive_file" "server" {
 # in rag.tf). No other AWS API is reachable from this code by construction.
 resource "aws_iam_role" "server_exec" {
   name        = "bbb-mcp-server-exec"
-  description = "Execution role for the BBB MCP server Lambda (logs only)"
+  description = "Execution role for the BBB MCP server Lambda (logs + scoped Bedrock)"
+
+  # The budget action attaches bbb-mcp-bedrock-deny to this role outside
+  # Terraform's knowledge when it fires. force_detach_policies keeps the
+  # role destroyable in that state, and depending on the deny policy makes
+  # destroy tear the role down (auto-detaching) before deleting the policy
+  # itself, so `terraform destroy` stays a full decommission even after a
+  # triggered backstop.
+  force_detach_policies = true
+  depends_on            = [aws_iam_policy.bedrock_deny]
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

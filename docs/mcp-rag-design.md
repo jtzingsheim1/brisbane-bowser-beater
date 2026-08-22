@@ -101,14 +101,17 @@ Tens of files, well under every ingestion limit.
   than as instructions, and to keep the project's observation-only
   framing (estimates, never guarantees).
 
-Both tools return a clear error result if the RAG environment variables
-are absent (see Config), and are simply not registered in that case so
-`tools/list` always reflects reality.
+When the RAG environment variables are absent (see Config) the tools are
+simply not registered, and the server instructions omit them, so
+`tools/list` and the instructions always reflect reality.
 
 Injection posture: the corpus is BBB's own committed docs, so the
 retrieved content is trusted-authored, but the prompt template still
 treats it as data, and the caller's question is bounded to 300 chars.
-This is stated in the security-posture doc.
+Generated answers are checked against the language-discipline term list
+at runtime and withheld on a violation, so a caller cannot steer the
+endpoint into serving prohibited framing. This is stated in the
+security-posture doc.
 
 ## Terraform resources (all in the existing single root module)
 
@@ -175,9 +178,11 @@ against a hostile caller driving up the bill. Layers, front to back:
    refuses reservations that would drop unreserved concurrency below
    100, so the default stays unreserved until the account's regional
    limit is raised; layers 1, 3 and 4 do not depend on it.
-3. **Per-request caps in code**: 300-char inputs, at most 8 retrieved
-   chunks, 500 output tokens, temperature 0, one tool execution per
-   metered request (batching already rejected).
+3. **Per-request caps in code**: 300-char inputs, one upstream attempt
+   per request (no SDK retries), at most 4 retrieved chunks on the
+   generation path (8 for retrieval-only search), 500 output tokens,
+   temperature 0, one tool execution per metered request (batching
+   already rejected).
 4. **Budget action in Terraform**: an account-wide (no service filter)
    USD 5 monthly budget on actual costs, with an `APPLY_IAM_POLICY`
    action (automatic approval) that attaches the customer-managed

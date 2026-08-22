@@ -8,7 +8,9 @@ terraform {
 
   required_providers {
     aws = {
-      # 6.27 introduced the S3 Vectors resources the RAG stack uses.
+      # The RAG stack needs the S3 Vectors + Bedrock agent resources,
+      # available from 6.27 per the provider docs; the committed lockfile
+      # pins 6.60.0, which is the version actually verified against.
       source  = "hashicorp/aws"
       version = ">= 6.27.0, < 7.0.0"
     }

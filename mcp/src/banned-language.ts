@@ -1,8 +1,9 @@
-// Test data for the language-discipline checks (see CLAUDE.md "Legal
-// hygiene"): observation-only wording, so none of these may appear in any
+// The language-discipline term list (see CLAUDE.md "Legal hygiene"):
+// observation-only wording, so none of these may appear in any
 // user-visible string this server ships nor in any doc the RAG corpus
-// serves. Imported only by tests; not reachable from the handler entry
-// point, so it never lands in the deployed bundle.
+// serves. Used two ways: tests sweep every source file and corpus doc,
+// and rag.ts checks generated ask_docs answers at runtime before they
+// are returned to the caller.
 
 export const BANNED_LANGUAGE = [
   "manipulat",

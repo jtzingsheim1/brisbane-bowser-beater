@@ -96,9 +96,13 @@ Supabase PostgREST              Bedrock Knowledge Base (bbb-mcp-docs)
 gateway usage plan throttles to 5 requests/second (burst 10) and caps usage
 at 500 requests per calendar month, so worst-case cost and abuse are
 bounded at the front door. The quota is deliberately small: with `ask_docs`
-able to trigger paid generation (~USD 0.01 worst case per call), 500
+able to trigger paid generation (~USD 0.01 worst case per call, and the
+client makes exactly one attempt per request -- no SDK retries), 500
 requests bounds a month at roughly USD 5 even if every metered request were
-a worst-case generation, before any other guard engages. The key value is never a Terraform output and
+a worst-case generation, before any other guard engages. AWS applies
+usage-plan quotas on a best-effort basis, so treat the 500 as a tight bound
+rather than an exact one; the budget action below is the firm layer behind
+it. The key value is never a Terraform output and
 never appears in workflow logs; the operator retrieves it directly in
 CloudShell. It does reside (encrypted) in the S3 Terraform state, so the
 set of principals who can read it equals the set who can already call
@@ -115,9 +119,13 @@ approved.
 **Least privilege, both directions.**
 
 - The *deploy role* can manage only resources named `bbb-mcp-*` (IAM,
-  Lambda, logs) plus this region's API Gateway surface and the single
-  Terraform state prefix. It cannot read data, create users, or touch
-  anything outside the stack.
+  Lambda, logs, the RAG stack's buckets/knowledge base/budget) plus this
+  region's API Gateway surface and the single Terraform state prefix. It
+  cannot read data or create users. Honest caveat: a role that deploys
+  code and the roles that code runs as is inherently powerful within the
+  account, so the operative control is that every session of it requires
+  a human-approved workflow run -- the name scoping is blast-radius
+  hygiene inside a single-purpose account, not a sandbox.
 - The *runtime role* (what the server itself runs as) can write its own
   CloudWatch log group, retrieve from the one docs knowledge base, and
   invoke generation through the one pinned inference profile (Claude Haiku
@@ -155,14 +163,19 @@ can spend money, so spending is bounded in AWS itself, not only in code:
    the gateway once the account's regional concurrency limit allows a
    reservation (`lambda_reserved_concurrency`); until then the other
    layers carry it.
-3. **Per-request caps in code**: 300-character inputs, at most 8
-   retrieved chunks, 500 output tokens, temperature 0.
+3. **Per-request caps in code**: 300-character inputs, one upstream
+   attempt per request (no retries), at most 4 retrieved chunks on the
+   generation path (8 for retrieval-only `search_docs`), 500 output
+   tokens, temperature 0.
 4. A **budget action** (Terraform-managed, USD 5/month, actual costs,
    account-wide) attaches a customer-managed `Deny bedrock:*` policy to
    the server's execution role at 100% of budget -- automatic approval, no
-   human in the loop. Budgets cost data lags by hours; layers 1-3 bound
-   spending inside that window, and this layer ends it afterwards. The
-   armed state shows as **Standby** in the AWS Budgets console.
+   human in the loop, and its own permissions are pinned so it can only
+   ever attach that one policy to that one role. Budgets cost data lags by
+   hours; layers 1-3 bound spending inside that window, and this layer
+   ends it afterwards, staying attached until an operator resets it
+   (recovery steps in `infra/BOOTSTRAP.md`). The armed state shows as
+   **Standby** in the AWS Budgets console.
 5. **No long-lived credentials** anywhere (below), so there is no key to
    steal that could bypass the gateway and invoke models directly.
 
@@ -170,7 +183,10 @@ can spend money, so spending is bounded in AWS itself, not only in code:
 committed documentation, curated by an explicit manifest, so retrieved
 content is trusted-authored. The `ask_docs` prompt template still treats
 retrieved passages as reference data rather than as instructions, callers'
-questions are length-bounded, and generation is capped as above.
+questions are length-bounded, and generation is capped as above. Generated
+answers are additionally checked against the project's language-discipline
+term list at runtime; an answer a caller has steered into prohibited
+framing is withheld rather than served from this endpoint.
 
 **Blast radius.** Full compromise of the API key lets someone read public
 data and ask documentation questions slightly faster than anonymous

@@ -155,20 +155,26 @@ cat > /tmp/trust.json <<EOF
 }
 EOF
 
-# Least-privilege deploy permissions: only what Terraform needs
-# to manage the bbb-mcp stack. The IAM role actions are scoped to
-# the specific roles Terraform creates (bbb-mcp-server-*,
-# bbb-mcp-kb-*, bbb-mcp-budgets-*) -- deliberately NOT bbb-mcp-* ,
-# which would also match this deploy role (bbb-mcp-deploy) and let
-# an assumed session rewrite its own policy/trust to escalate to
-# admin. An explicit Deny on the deploy role's own ARN makes that
-# impossible even if the pattern is ever loosened. API Gateway
-# does not support name-scoped ARNs, so it is scoped to this
-# region and account (which contains nothing else). The Bedrock,
-# S3 Vectors, corpus-bucket, and Budgets statements support the
-# docs Q&A (RAG) stack added 2026-08; knowledge-base creation and
-# listing cannot be resource-scoped, everything else is name- or
-# account-scoped.
+# Scoped deploy permissions: only what Terraform needs to manage
+# the bbb-mcp stack. The IAM role actions are scoped to the
+# specific roles Terraform creates (bbb-mcp-server-*, bbb-mcp-kb-*,
+# bbb-mcp-budgets-*) -- deliberately NOT bbb-mcp-* , which would
+# also match this deploy role (bbb-mcp-deploy) and let an assumed
+# session rewrite its own policy/trust directly. An explicit Deny
+# on the deploy role's own ARN blocks that path even if the
+# pattern is ever loosened. Honest limit of this scoping: a deploy
+# role that can create Lambda-executable roles, write their
+# policies, and deploy code into them is still account-powerful by
+# construction (that IS deploying), so the real control on this
+# account is that every session of this role requires a human-
+# approved workflow run from main -- the scoping below is blast-
+# radius hygiene inside a single-purpose account, not a sandbox.
+# API Gateway does not support name-scoped ARNs, so it is scoped
+# to this region and account (which contains nothing else). The
+# Bedrock, S3 Vectors, corpus-bucket, and Budgets statements
+# support the docs Q&A (RAG) stack added 2026-08; knowledge-base
+# creation and listing cannot be resource-scoped, everything else
+# is name- or account-scoped.
 cat > /tmp/policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -194,7 +200,7 @@ cat > /tmp/policy.json <<EOF
         "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
         "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy",
         "iam:ListRolePolicies", "iam:ListAttachedRolePolicies",
-        "iam:ListInstanceProfilesForRole"
+        "iam:ListInstanceProfilesForRole", "iam:DetachRolePolicy"
       ],
       "Resource": [
         "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
@@ -498,8 +504,24 @@ Two budget notes:
   a heartbeat, or delete/raise it in the console when it becomes noise.
 - After the first apply, verify in **AWS Budgets** that the
   `bbb-mcp-monthly` budget's action shows **Standby**: that is the armed
-  state of the layer that detaches Bedrock access from the server role at
+  state of the layer that denies Bedrock access to the server role at
   100% of budget.
+
+**If the backstop ever fires** (docs tools start returning errors and the
+budget emails you): the deny policy stays attached across month rollover
+by design -- nothing un-denies itself. To restore service after deciding
+the spend was acceptable, detach it in CloudShell and re-arm the action:
+
+```bash
+aws iam detach-role-policy --role-name bbb-mcp-server-exec \
+  --policy-arn arn:aws:iam::$(aws sts get-caller-identity \
+  --query Account --output text):policy/bbb-mcp-bedrock-deny
+```
+
+then in the Budgets console reset the `bbb-mcp-monthly` action and confirm
+it shows **Standby** again. `terraform destroy` still works in the
+triggered state (the server role force-detaches policies on destroy), so
+the one-command decommission is unaffected.
 
 ---
 

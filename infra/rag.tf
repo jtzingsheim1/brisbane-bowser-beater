@@ -49,6 +49,16 @@ resource "aws_s3_bucket_public_access_block" "corpus" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_server_side_encryption_configuration" "corpus" {
+  bucket = aws_s3_bucket.corpus.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 # ---------------------------------------------------------------------------
 # S3 Vectors: vector bucket + index. Dimensions/metric match Titan V2 as
 # Bedrock uses it (1024-dim float32, cosine); the two non-filterable
@@ -114,9 +124,21 @@ resource "aws_iam_role_policy" "kb" {
         Resource = [aws_s3_bucket.corpus.arn, "${aws_s3_bucket.corpus.arn}/*"]
       },
       {
+        # The specific vector operations Bedrock needs for indexing and
+        # retrieval, not s3vectors:*; a missing action would surface as an
+        # AccessDenied in the deploy run's ingestion step.
         Sid    = "UseVectorIndex"
         Effect = "Allow"
-        Action = ["s3vectors:*"]
+        Action = [
+          "s3vectors:GetVectorBucket",
+          "s3vectors:GetIndex",
+          "s3vectors:ListIndexes",
+          "s3vectors:PutVectors",
+          "s3vectors:GetVectors",
+          "s3vectors:QueryVectors",
+          "s3vectors:DeleteVectors",
+          "s3vectors:ListVectors",
+        ]
         Resource = [
           aws_s3vectors_vector_bucket.docs.vector_bucket_arn,
           aws_s3vectors_index.docs.index_arn,
@@ -263,17 +285,32 @@ resource "aws_iam_role_policy" "budgets" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AttachDenyToServerRole"
-      Effect = "Allow"
-      Action = [
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:GetRole",
-        "iam:ListAttachedRolePolicies",
-      ]
-      Resource = [aws_iam_role.server_exec.arn]
-    }]
+    Statement = [
+      {
+        # Pinned to the one deny policy via iam:PolicyARN, so this role
+        # can never be steered into attaching anything else to the server
+        # role (e.g. by a rewritten budget action definition).
+        Sid    = "AttachDenyToServerRole"
+        Effect = "Allow"
+        Action = [
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+        ]
+        Resource = [aws_iam_role.server_exec.arn]
+        Condition = {
+          ArnEquals = { "iam:PolicyARN" = aws_iam_policy.bedrock_deny.arn }
+        }
+      },
+      {
+        Sid    = "InspectServerRole"
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole",
+          "iam:ListAttachedRolePolicies",
+        ]
+        Resource = [aws_iam_role.server_exec.arn]
+      },
+    ]
   })
 }
 
