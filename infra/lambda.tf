@@ -13,8 +13,13 @@ data "archive_file" "server" {
 # scoped Bedrock retrieval/generation APIs (see aws_iam_role_policy.server_rag
 # in rag.tf). No other AWS API is reachable from this code by construction.
 resource "aws_iam_role" "server_exec" {
-  name        = "bbb-mcp-server-exec"
-  description = "Execution role for the BBB MCP server Lambda (logs + scoped Bedrock)"
+  name = "bbb-mcp-server-exec"
+  # Description deliberately left at its original value: editing it calls
+  # iam:UpdateRoleDescription, which the least-privilege deploy role does
+  # not (and need not) hold. The role's real, current capability is defined
+  # by its attached policies (logs + the scoped Bedrock policy in rag.tf),
+  # not by this cosmetic string.
+  description = "Execution role for the BBB MCP server Lambda (logs only)"
 
   # The budget action attaches bbb-mcp-bedrock-deny to this role outside
   # Terraform's knowledge when it fires. force_detach_policies keeps the
