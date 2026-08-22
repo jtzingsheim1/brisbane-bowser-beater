@@ -10,9 +10,18 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getRecentHistory, getLatestForecast } from "./data.js";
 import { getCycleModel } from "./cycle-model.js";
+import {
+  askDocs,
+  DEFAULT_RESULTS,
+  MAX_QUERY_CHARS,
+  MAX_RESULTS,
+  ragConfigFromEnv,
+  searchDocs,
+  type RagConfig,
+} from "./rag.js";
 
 export const SERVER_NAME = "brisbane-bowser-beater";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.0";
 
 const ATTRIBUTION =
   "Data: QLD Fuel Price Reporting, data.qld.gov.au (CC BY 4.0). " +
@@ -26,7 +35,10 @@ const INSTRUCTIONS =
   "average U91 (regular unleaded) in AUD per litre; there is no per-station " +
   "data. Forecasts are estimates, not guarantees. Typical use: call " +
   "get_forecast for the forward view, get_recent_history for observed " +
-  "context, and get_cycle_model for the long-run cycle characterisation.";
+  "context, and get_cycle_model for the long-run cycle characterisation. " +
+  "For questions about the project itself (methodology, data licence, " +
+  "architecture), use search_docs to find passages in its documentation " +
+  "or ask_docs for a cited answer generated from those docs.";
 
 function jsonResult(payload: unknown) {
   return {
@@ -153,5 +165,92 @@ export function buildServer(): McpServer {
     },
   );
 
+  // The docs Q&A tools exist only when the RAG stack is deployed and wired
+  // in via environment (infra/rag.tf), so tools/list always reflects what
+  // can actually be served.
+  const ragConfig = ragConfigFromEnv();
+  if (ragConfig) {
+    registerRagTools(server, ragConfig);
+  }
+
   return server;
+}
+
+function registerRagTools(server: McpServer, config: RagConfig): void {
+  server.registerTool(
+    "search_docs",
+    {
+      title: "Search the project's documentation",
+      description:
+        "Search Brisbane Bowser Beater's own documentation (forecast " +
+        "methodology, data licence and attribution, architecture, security " +
+        "posture, runbooks) and return the most relevant passages with " +
+        "their source files and relevance scores. Retrieval only; nothing " +
+        "is generated.",
+      inputSchema: {
+        query: z
+          .string()
+          .min(3)
+          .max(MAX_QUERY_CHARS)
+          .describe("What to look for in the documentation."),
+        top_k: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_RESULTS)
+          .default(DEFAULT_RESULTS)
+          .describe(
+            `Number of passages to return (1-${MAX_RESULTS}). ` +
+              `Defaults to ${DEFAULT_RESULTS}.`,
+          ),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ query, top_k }) => {
+      try {
+        const results = await searchDocs(config, query, top_k);
+        return jsonResult({
+          results_returned: results.length,
+          results,
+          attribution: ATTRIBUTION,
+        });
+      } catch {
+        return errorResult(
+          "The documentation index could not be reached. Try again shortly.",
+        );
+      }
+    },
+  );
+
+  server.registerTool(
+    "ask_docs",
+    {
+      title: "Ask the project's documentation",
+      description:
+        "Ask a question about the Brisbane Bowser Beater project and get a " +
+        "concise answer generated only from the project's own " +
+        "documentation, with citations back to the source files. Answers " +
+        "follow the project's framing: the price cycle is described in " +
+        "observational terms, and forecasts are estimates, not guarantees.",
+      inputSchema: {
+        question: z
+          .string()
+          .min(3)
+          .max(MAX_QUERY_CHARS)
+          .describe("The question to answer from the documentation."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ question }) => {
+      try {
+        const { answer, citations } = await askDocs(config, question);
+        return jsonResult({ answer, citations, attribution: ATTRIBUTION });
+      } catch {
+        return errorResult(
+          "The documentation answerer could not be reached. Try again " +
+            "shortly.",
+        );
+      }
+    },
+  );
 }

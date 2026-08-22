@@ -12,3 +12,20 @@ output "api_key_name" {
   description = "Name of the API key resource. The VALUE is deliberately not output; retrieve it in CloudShell per infra/BOOTSTRAP.md."
   value       = aws_api_gateway_api_key.mcp.name
 }
+
+# Consumed by the deploy workflow's corpus-sync + ingestion step. None of
+# these are secrets.
+output "knowledge_base_id" {
+  description = "Bedrock knowledge base id for the docs corpus."
+  value       = aws_bedrockagent_knowledge_base.docs.id
+}
+
+output "data_source_id" {
+  description = "Data source id within the docs knowledge base."
+  value       = aws_bedrockagent_data_source.docs.data_source_id
+}
+
+output "corpus_bucket" {
+  description = "S3 bucket the curated docs corpus is synced to."
+  value       = aws_s3_bucket.corpus.bucket
+}

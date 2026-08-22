@@ -8,8 +8,9 @@ terraform {
 
   required_providers {
     aws = {
+      # 6.27 introduced the S3 Vectors resources the RAG stack uses.
       source  = "hashicorp/aws"
-      version = "~> 6.0"
+      version = ">= 6.27.0, < 7.0.0"
     }
     archive = {
       source  = "hashicorp/archive"

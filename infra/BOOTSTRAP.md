@@ -156,15 +156,19 @@ cat > /tmp/trust.json <<EOF
 EOF
 
 # Least-privilege deploy permissions: only what Terraform needs
-# to manage the bbb-mcp stack. The IAM actions are scoped to
-# bbb-mcp-SERVER-* (the Lambda execution role Terraform creates,
-# named bbb-mcp-server-exec) -- deliberately NOT bbb-mcp-* , which
-# would also match this deploy role (bbb-mcp-deploy) and let an
-# assumed session rewrite its own policy/trust to escalate to
+# to manage the bbb-mcp stack. The IAM role actions are scoped to
+# the specific roles Terraform creates (bbb-mcp-server-*,
+# bbb-mcp-kb-*, bbb-mcp-budgets-*) -- deliberately NOT bbb-mcp-* ,
+# which would also match this deploy role (bbb-mcp-deploy) and let
+# an assumed session rewrite its own policy/trust to escalate to
 # admin. An explicit Deny on the deploy role's own ARN makes that
 # impossible even if the pattern is ever loosened. API Gateway
 # does not support name-scoped ARNs, so it is scoped to this
-# region and account (which contains nothing else).
+# region and account (which contains nothing else). The Bedrock,
+# S3 Vectors, corpus-bucket, and Budgets statements support the
+# docs Q&A (RAG) stack added 2026-08; knowledge-base creation and
+# listing cannot be resource-scoped, everything else is name- or
+# account-scoped.
 cat > /tmp/policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -182,7 +186,7 @@ cat > /tmp/policy.json <<EOF
       "Resource": "arn:aws:s3:::${STATE_BUCKET}/bbb-mcp/*"
     },
     {
-      "Sid": "LambdaExecRole",
+      "Sid": "StackRoles",
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole", "iam:DeleteRole", "iam:GetRole",
@@ -192,7 +196,22 @@ cat > /tmp/policy.json <<EOF
         "iam:ListRolePolicies", "iam:ListAttachedRolePolicies",
         "iam:ListInstanceProfilesForRole"
       ],
-      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*"
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*"
+      ]
+    },
+    {
+      "Sid": "ManagedPolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreatePolicy", "iam:DeletePolicy", "iam:GetPolicy",
+        "iam:GetPolicyVersion", "iam:ListPolicyVersions",
+        "iam:CreatePolicyVersion", "iam:DeletePolicyVersion",
+        "iam:TagPolicy", "iam:UntagPolicy", "iam:ListEntitiesForPolicy"
+      ],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-*"
     },
     {
       "Sid": "DenySelfModification",
@@ -212,6 +231,24 @@ cat > /tmp/policy.json <<EOF
       "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
       "Condition": {
         "StringEquals": { "iam:PassedToService": "lambda.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "PassKbRoleToBedrockOnly",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*",
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "bedrock.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "PassBudgetsRoleToBudgetsOnly",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*",
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "budgets.amazonaws.com" }
       }
     },
     {
@@ -238,6 +275,54 @@ cat > /tmp/policy.json <<EOF
         "logs:ListTagsForResource", "logs:DescribeLogGroups"
       ],
       "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:*"
+    },
+    {
+      "Sid": "CorpusBucket",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::bbb-mcp-corpus-*",
+        "arn:aws:s3:::bbb-mcp-corpus-*/*"
+      ]
+    },
+    {
+      "Sid": "VectorStore",
+      "Effect": "Allow",
+      "Action": "s3vectors:*",
+      "Resource": [
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*",
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*/index/*"
+      ]
+    },
+    {
+      "Sid": "BedrockKbCreateAndList",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:CreateKnowledgeBase", "bedrock:ListKnowledgeBases"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "BedrockKbManage",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:GetKnowledgeBase", "bedrock:UpdateKnowledgeBase",
+        "bedrock:DeleteKnowledgeBase",
+        "bedrock:CreateDataSource", "bedrock:GetDataSource",
+        "bedrock:UpdateDataSource", "bedrock:DeleteDataSource",
+        "bedrock:ListDataSources",
+        "bedrock:StartIngestionJob", "bedrock:GetIngestionJob",
+        "bedrock:ListIngestionJobs",
+        "bedrock:TagResource", "bedrock:UntagResource",
+        "bedrock:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:knowledge-base/*"
+    },
+    {
+      "Sid": "CostBudget",
+      "Effect": "Allow",
+      "Action": "budgets:*",
+      "Resource": "arn:aws:budgets::${ACCOUNT_ID}:budget/bbb-mcp-*"
     }
   ]
 }
@@ -380,6 +465,41 @@ All of this is in the repo:
 That's it. No AWS keys were created, and none will be. When the deploy
 workflow first runs you will see a review request in the repo's Actions tab;
 approving it is what releases short-lived credentials to that single run.
+
+---
+
+## Update for the docs Q&A (RAG) stack (2026-08, ~15 min once)
+
+The RAG extension (see `docs/mcp-rag-design.md`) adds Bedrock, S3 Vectors,
+a corpus bucket, and a cost-backstop budget action to the Terraform stack.
+Before its first deploy, three one-time things need a human:
+
+1. **Refresh the deploy role.** Re-run the Step 3 CloudShell script above
+   (it is idempotent; the policy it writes now includes the RAG
+   permissions). Nothing else in the script changes anything on a re-run.
+2. **Enable the models in Bedrock.** In the console (region Sydney),
+   open **Amazon Bedrock, Model catalog**:
+   - **Claude Haiku 4.5** (Anthropic): request access. First-time
+     Anthropic use requires a short use-case form, and the Marketplace
+     subscription needs the enabling identity to have Marketplace
+     permissions and the account a payment method. An optional playground
+     invoke confirms it end to end (the first invoke can take up to ~15
+     minutes to auto-subscribe).
+   - **Titan Text Embeddings V2** (Amazon): no form; just confirm it
+     shows as available.
+3. **Add one repository variable.** In GitHub, alongside the Step 4
+   variables: `ALERT_EMAIL` = the email that should hear when the cost
+   backstop triggers (the budget action's required subscriber).
+
+Two budget notes:
+
+- The Step 3 **zero-spend budget will now alert every month** once real
+  (tiny) Bedrock spend begins. That is it working as designed; keep it as
+  a heartbeat, or delete/raise it in the console when it becomes noise.
+- After the first apply, verify in **AWS Budgets** that the
+  `bbb-mcp-monthly` budget's action shows **Standby**: that is the armed
+  state of the layer that detaches Bedrock access from the server role at
+  100% of budget.
 
 ---
 

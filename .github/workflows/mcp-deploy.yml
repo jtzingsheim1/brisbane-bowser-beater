@@ -37,7 +37,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Apply can include knowledge-base creation plus corpus ingestion.
+    timeout-minutes: 25
     environment: aws
     if: github.ref == 'refs/heads/main'
     env:
@@ -45,6 +46,7 @@ jobs:
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
       TF_VAR_supabase_anon_key: ${{ vars.SUPABASE_ANON_KEY }}
+      TF_VAR_budget_alert_email: ${{ vars.ALERT_EMAIL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -91,3 +93,52 @@ jobs:
         if: inputs.action == 'apply'
         working-directory: infra
         run: terraform output
+
+      # Ingestion has no Terraform resource (see docs/mcp-rag-design.md):
+      # after each apply, sync exactly the curated corpus manifest to the
+      # corpus bucket and run an ingestion job to completion, so doc changes
+      # ride the normal deploy. --delete propagates removals.
+      - name: Sync docs corpus and ingest
+        if: inputs.action == 'apply'
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          KB_ID=$(terraform output -raw knowledge_base_id)
+          DS_ID=$(terraform output -raw data_source_id)
+          BUCKET=$(terraform output -raw corpus_bucket)
+
+          STAGE=$(mktemp -d)
+          while IFS= read -r entry; do
+            case "$entry" in ''|'#'*) continue ;; esac
+            mkdir -p "$STAGE/$(dirname "$entry")"
+            cp "../$entry" "$STAGE/$entry"
+          done < ../mcp/corpus-manifest.txt
+          aws s3 sync "$STAGE" "s3://$BUCKET/" --delete
+
+          JOB_ID=$(aws bedrock-agent start-ingestion-job \
+            --knowledge-base-id "$KB_ID" \
+            --data-source-id "$DS_ID" \
+            --query 'ingestionJob.ingestionJobId' --output text)
+          echo "Started ingestion job $JOB_ID"
+          for _ in $(seq 1 60); do
+            STATUS=$(aws bedrock-agent get-ingestion-job \
+              --knowledge-base-id "$KB_ID" \
+              --data-source-id "$DS_ID" \
+              --ingestion-job-id "$JOB_ID" \
+              --query 'ingestionJob.status' --output text)
+            echo "Ingestion status: $STATUS"
+            case "$STATUS" in
+              COMPLETE)
+                exit 0 ;;
+              FAILED|STOPPED)
+                aws bedrock-agent get-ingestion-job \
+                  --knowledge-base-id "$KB_ID" \
+                  --data-source-id "$DS_ID" \
+                  --ingestion-job-id "$JOB_ID" \
+                  --query 'ingestionJob.failureReasons' --output text
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for ingestion to complete"
+          exit 1

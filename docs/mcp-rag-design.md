@@ -67,6 +67,7 @@ workflow with `aws s3 sync --delete` so removals propagate:
 - `docs/cycle-visuals-design.md`
 - `docs/data-refresh-2026-05.md`
 - `docs/deploy-runbook.md`
+- `docs/mcp-rag-design.md` (this document)
 
 Deliberately excluded: `CLAUDE.md`, `PLAN.md`, `AGENTS.md`. They are
 internal working notes (including candid legal-hygiene rationale and the

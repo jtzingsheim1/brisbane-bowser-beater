@@ -326,12 +326,20 @@ Most conventions inherit from the global standards. Project-specific notes:
 A cleanly bounded subproject serving BBB's public forecast data to AI clients
 over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
 
-- `mcp/` -- TypeScript Lambda, own `package.json`/lockfile, three read-only
-  tools (`get_forecast`, `get_recent_history`, `get_cycle_model`). Plain-fetch
-  Supabase anon reads; `cycle_params.json` bundled at build time. No paid API
-  calls anywhere.
+- `mcp/` -- TypeScript Lambda, own `package.json`/lockfile, five read-only
+  tools: three over public forecast data (`get_forecast`,
+  `get_recent_history`, `get_cycle_model`; plain-fetch Supabase anon reads,
+  `cycle_params.json` bundled at build time) and two docs Q&A tools
+  (`search_docs`, `ask_docs`) grounded in a curated corpus of this repo's
+  public docs (`mcp/corpus-manifest.txt`) via a Bedrock knowledge base.
+  The only paid call anywhere is `ask_docs` generation (Claude Haiku 4.5
+  via Bedrock), bounded by layered AWS-enforced cost guards (500/month
+  gateway quota, per-request caps, a USD 5 budget action that denies
+  Bedrock at 100%) -- see `docs/mcp-rag-design.md`.
 - `infra/` -- single Terraform root module (Lambda + REST API Gateway with
-  API key + usage plan). `terraform destroy` = full decommission.
+  API key + usage plan; Bedrock knowledge base + S3 Vectors index + corpus
+  bucket + budget action for the RAG stack). `terraform destroy` = full
+  decommission.
 - Deploys ONLY via `.github/workflows/mcp-deploy.yml` (GitHub OIDC into the
   `aws` environment, human-approval gated). No long-lived AWS credentials
   exist anywhere -- sessions must never hold AWS keys. One-time account setup:
