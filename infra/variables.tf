@@ -2,6 +2,15 @@ variable "aws_region" {
   description = "Deployment region. Sydney, matching the audience of the data."
   type        = string
   default     = "ap-southeast-2"
+
+  # The RAG stack pins Claude Haiku 4.5 foundation-model ARNs to the au.
+  # inference profile's two destination regions (see rag.tf), so deploying
+  # anywhere else would silently mismatch the profile ARN in the Lambda
+  # environment. Fail at plan time instead.
+  validation {
+    condition     = contains(["ap-southeast-2", "ap-southeast-4"], var.aws_region)
+    error_message = "aws_region must be an au. inference-profile destination region (ap-southeast-2 or ap-southeast-4)."
+  }
 }
 
 # Both Supabase values are the publishable (low-privilege) tier: Postgres
@@ -38,9 +47,12 @@ variable "lambda_reserved_concurrency" {
   default     = -1
 }
 
-# Abuse/cost caps enforced by the API Gateway usage plan. The free-tier
-# budget is monthly Lambda requests (1M) and compute; these defaults keep a
-# fully saturated abuser well inside both.
+# Abuse/cost caps enforced by the API Gateway usage plan. With ask_docs
+# able to trigger paid generation (~USD 0.01 worst case per call), the
+# monthly quota is the front-door arithmetic ceiling on spend: it is
+# shared across all tools, so quota x worst-case-cost bounds the month
+# (~USD 5 at the default) before the budget action ever engages. Sized
+# for near-zero real traffic; raise deliberately if usage appears.
 variable "throttle_rate_limit" {
   description = "Steady-state requests per second allowed per API key."
   type        = number
@@ -54,7 +66,32 @@ variable "throttle_burst_limit" {
 }
 
 variable "monthly_quota" {
-  description = "Hard cap on requests per API key per calendar month."
+  # API Gateway enforces usage-plan quotas on a best-effort basis (small
+  # overshoot under burst is possible); the budget action in rag.tf is the
+  # firm backstop behind it.
+  description = "Cap on requests per API key per calendar month."
   type        = number
-  default     = 100000
+  default     = 500
+}
+
+# Cost backstop (see infra/rag.tf): account-wide monthly budget in USD.
+# At 100% of actual spend the budget action attaches a Deny bedrock:*
+# policy to the server role, ending paid generation.
+variable "budget_limit_usd" {
+  description = "Monthly account-wide budget (USD) for the deny-Bedrock action."
+  type        = string
+  default     = "5.0"
+}
+
+variable "budget_alert_email" {
+  description = "Email notified when the budget action triggers."
+  type        = string
+  # Not a credential, but a personal address: sensitive keeps it out of
+  # plan/apply output in the public repo's workflow logs.
+  sensitive = true
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+$", var.budget_alert_email))
+    error_message = "budget_alert_email must be an email address."
+  }
 }

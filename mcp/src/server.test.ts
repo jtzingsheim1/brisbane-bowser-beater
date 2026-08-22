@@ -7,26 +7,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import cycleParams from "../../analysis/output/cycle_params.json" with { type: "json" };
 import { getCycleModel } from "./cycle-model.js";
-
-// Observation-only wording: none of these may appear in any user-visible
-// string this server ships (tool descriptions, instructions, outputs).
-const BANNED_LANGUAGE = [
-  "manipulat",
-  "collu",
-  "rigged",
-  "scam",
-  "fleece",
-  "goug",
-  "predatory",
-  "greed",
-  "playing games",
-  "fight back",
-  "stand up to",
-];
+// Observation-only wording: none of the listed terms may appear in any
+// user-visible string this server ships (tool descriptions, instructions,
+// outputs). The list lives in banned-language.ts so the corpus-manifest
+// test can apply the same sweep to every doc the RAG tools serve.
+import { BANNED_LANGUAGE } from "./banned-language.js";
 
 describe("language discipline", () => {
   it("keeps banned framing out of the server source", () => {
-    const source = ["server.ts", "cycle-model.ts", "data.ts", "handler.ts"]
+    const source = ["server.ts", "cycle-model.ts", "data.ts", "handler.ts", "rag.ts"]
       .map((f) =>
         readFileSync(
           fileURLToPath(new URL(`./${f}`, import.meta.url)),

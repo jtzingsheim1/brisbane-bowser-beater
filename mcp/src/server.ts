@@ -1,6 +1,8 @@
-// The MCP server definition: three read-only tools over Brisbane Bowser
-// Beater's public forecast data. A fresh server instance is created per
-// request (stateless transport), so registration here must stay cheap.
+// The MCP server definition: read-only tools over Brisbane Bowser Beater's
+// public forecast data, plus (when the RAG stack is wired in) docs Q&A
+// tools over the project's own documentation. A fresh server instance is
+// created per request (stateless transport), so registration must stay
+// cheap.
 //
 // Language discipline: all descriptions and outputs describe the price cycle
 // in observation-only terms (see CLAUDE.md "Legal hygiene"). Forecasts are
@@ -10,9 +12,19 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getRecentHistory, getLatestForecast } from "./data.js";
 import { getCycleModel } from "./cycle-model.js";
+import {
+  askDocs,
+  DEFAULT_RESULTS,
+  MAX_QUERY_CHARS,
+  MAX_RESULTS,
+  meetsLanguageDiscipline,
+  ragConfigFromEnv,
+  searchDocs,
+  type RagConfig,
+} from "./rag.js";
 
 export const SERVER_NAME = "brisbane-bowser-beater";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.0";
 
 const ATTRIBUTION =
   "Data: QLD Fuel Price Reporting, data.qld.gov.au (CC BY 4.0). " +
@@ -27,6 +39,13 @@ const INSTRUCTIONS =
   "data. Forecasts are estimates, not guarantees. Typical use: call " +
   "get_forecast for the forward view, get_recent_history for observed " +
   "context, and get_cycle_model for the long-run cycle characterisation.";
+
+// Appended only when the docs tools are actually registered, so the
+// instructions never advertise tools that tools/list does not carry.
+const RAG_INSTRUCTIONS =
+  " For questions about the project itself (methodology, data licence, " +
+  "architecture), use search_docs to find passages in its documentation " +
+  "or ask_docs for a cited answer generated from those docs.";
 
 function jsonResult(payload: unknown) {
   return {
@@ -44,9 +63,16 @@ function errorResult(message: string) {
 }
 
 export function buildServer(): McpServer {
+  // Read once up front: it decides both the instructions string and
+  // whether the docs tools are registered at all.
+  const ragConfig = ragConfigFromEnv();
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: INSTRUCTIONS },
+    {
+      instructions: ragConfig
+        ? INSTRUCTIONS + RAG_INSTRUCTIONS
+        : INSTRUCTIONS,
+    },
   );
 
   server.registerTool(
@@ -153,5 +179,101 @@ export function buildServer(): McpServer {
     },
   );
 
+  // The docs Q&A tools exist only when the RAG stack is deployed and wired
+  // in via environment (infra/rag.tf), so tools/list always reflects what
+  // can actually be served.
+  if (ragConfig) {
+    registerRagTools(server, ragConfig);
+  }
+
   return server;
+}
+
+function registerRagTools(server: McpServer, config: RagConfig): void {
+  server.registerTool(
+    "search_docs",
+    {
+      title: "Search the project's documentation",
+      description:
+        "Search Brisbane Bowser Beater's own documentation (forecast " +
+        "methodology, data licence and attribution, architecture, security " +
+        "posture, runbooks) and return the most relevant passages with " +
+        "their source files and relevance scores. Retrieval only; nothing " +
+        "is generated.",
+      inputSchema: {
+        query: z
+          .string()
+          .min(3)
+          .max(MAX_QUERY_CHARS)
+          .describe("What to look for in the documentation."),
+        top_k: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_RESULTS)
+          .default(DEFAULT_RESULTS)
+          .describe(
+            `Number of passages to return (1-${MAX_RESULTS}). ` +
+              `Defaults to ${DEFAULT_RESULTS}.`,
+          ),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ query, top_k }) => {
+      try {
+        const results = await searchDocs(config, query, top_k);
+        return jsonResult({
+          results_returned: results.length,
+          results,
+          attribution: ATTRIBUTION,
+        });
+      } catch {
+        return errorResult(
+          "The documentation index could not be reached. Try again shortly.",
+        );
+      }
+    },
+  );
+
+  server.registerTool(
+    "ask_docs",
+    {
+      title: "Ask the project's documentation",
+      description:
+        "Ask a question about the Brisbane Bowser Beater project and get a " +
+        "concise answer generated only from the project's own " +
+        "documentation, with citations back to the source files. Answers " +
+        "follow the project's framing: the price cycle is described in " +
+        "observational terms, and forecasts are estimates, not guarantees.",
+      inputSchema: {
+        question: z
+          .string()
+          .min(3)
+          .max(MAX_QUERY_CHARS)
+          .describe("The question to answer from the documentation."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ question }) => {
+      try {
+        const { answer, citations } = await askDocs(config, question);
+        if (!meetsLanguageDiscipline(answer)) {
+          // Runtime backstop for the project's language discipline: a
+          // caller-steered generation that drifts into prohibited framing
+          // is dropped rather than served from this endpoint.
+          return errorResult(
+            "The generated answer did not meet this project's wording " +
+              "guidelines, so it was not returned. Try rephrasing the " +
+              "question.",
+          );
+        }
+        return jsonResult({ answer, citations, attribution: ATTRIBUTION });
+      } catch {
+        return errorResult(
+          "The documentation answerer could not be reached. Try again " +
+            "shortly.",
+        );
+      }
+    },
+  );
 }

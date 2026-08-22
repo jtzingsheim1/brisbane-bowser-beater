@@ -9,11 +9,21 @@ data "archive_file" "server" {
   output_path = "${path.module}/.terraform/bbb-mcp-server.zip"
 }
 
-# Execution role: the only thing the running server may do in AWS is write
-# its own logs. No other AWS API is reachable from this code by construction.
+# Execution role: the running server may write its own logs and call the
+# scoped Bedrock retrieval/generation APIs (see aws_iam_role_policy.server_rag
+# in rag.tf). No other AWS API is reachable from this code by construction.
 resource "aws_iam_role" "server_exec" {
   name        = "bbb-mcp-server-exec"
-  description = "Execution role for the BBB MCP server Lambda (logs only)"
+  description = "Execution role for the BBB MCP server Lambda (logs + scoped Bedrock)"
+
+  # The budget action attaches bbb-mcp-bedrock-deny to this role outside
+  # Terraform's knowledge when it fires. force_detach_policies keeps the
+  # role destroyable in that state, and depending on the deny policy makes
+  # destroy tear the role down (auto-detaching) before deleting the policy
+  # itself, so `terraform destroy` stays a full decommission even after a
+  # triggered backstop.
+  force_detach_policies = true
+  depends_on            = [aws_iam_policy.bedrock_deny]
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -56,11 +66,12 @@ resource "aws_lambda_function" "server" {
   architectures    = ["arm64"]
 
   memory_size = 256
-  # 20s leaves headroom over the data layer's worst case (two sequential
-  # 6s upstream fetches = 12s) so an upstream stall degrades to a graceful
-  # tool error rather than a hard Lambda kill, while staying under API
-  # Gateway's 29s integration limit.
-  timeout = 20
+  # 25s leaves headroom over the data layer's worst cases (two sequential
+  # 6s upstream fetches = 12s; one ask_docs RetrieveAndGenerate round trip
+  # with a 500-token generation cap) so an upstream stall degrades to a
+  # graceful tool error rather than a hard Lambda kill, while staying
+  # under API Gateway's 29s integration limit.
+  timeout = 25
 
   # Bounds parallel invocations as defense in depth behind the usage-plan
   # throttle. Defaults to unreserved (-1) so the first apply succeeds on a
@@ -71,6 +82,10 @@ resource "aws_lambda_function" "server" {
     variables = {
       SUPABASE_URL      = var.supabase_url
       SUPABASE_ANON_KEY = var.supabase_anon_key
+      # RAG tools (see infra/rag.tf); the server skips registering them
+      # when these are absent.
+      BBB_KB_ID         = aws_bedrockagent_knowledge_base.docs.id
+      BBB_RAG_MODEL_ARN = local.rag_profile_arn
     }
   }
 

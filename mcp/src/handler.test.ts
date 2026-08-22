@@ -77,6 +77,9 @@ describe("handler", () => {
   beforeEach(() => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_ANON_KEY = "test-anon-key";
+    // RAG stays unconfigured here; rag.test.ts covers the five-tool case.
+    delete process.env.BBB_KB_ID;
+    delete process.env.BBB_RAG_MODEL_ARN;
     clearDataCache();
   });
 
@@ -140,7 +143,7 @@ describe("handler", () => {
     expect(parsed.result.instructions).toContain("estimates");
   });
 
-  it("lists exactly the three read-only tools", async () => {
+  it("lists exactly the three data tools when RAG is not configured", async () => {
     const res = await handler(rpcEvent(rpc("tools/list")));
     const parsed = JSON.parse(res.body);
     const names = parsed.result.tools.map((t: { name: string }) => t.name);
