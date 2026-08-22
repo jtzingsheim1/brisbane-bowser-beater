@@ -1,6 +1,8 @@
-// The MCP server definition: three read-only tools over Brisbane Bowser
-// Beater's public forecast data. A fresh server instance is created per
-// request (stateless transport), so registration here must stay cheap.
+// The MCP server definition: read-only tools over Brisbane Bowser Beater's
+// public forecast data, plus (when the RAG stack is wired in) docs Q&A
+// tools over the project's own documentation. A fresh server instance is
+// created per request (stateless transport), so registration must stay
+// cheap.
 //
 // Language discipline: all descriptions and outputs describe the price cycle
 // in observation-only terms (see CLAUDE.md "Legal hygiene"). Forecasts are

@@ -10,7 +10,11 @@ import {
   RetrieveAndGenerateCommand,
 } from "@aws-sdk/client-bedrock-agent-runtime";
 import { handler } from "./handler.js";
-import { ANSWER_PROMPT_TEMPLATE, setRagClientForTests } from "./rag.js";
+import {
+  ANSWER_PROMPT_TEMPLATE,
+  meetsLanguageDiscipline,
+  setRagClientForTests,
+} from "./rag.js";
 
 const KB_ID = "TESTKB1234";
 const MODEL_ARN =
@@ -307,6 +311,19 @@ describe("docs Q&A tools", () => {
     const payload = JSON.parse(JSON.parse(res.body).result.content[0].text);
     expect(payload.answer).toBe("");
     expect(payload.citations).toEqual([]);
+  });
+
+  it("does not withhold innocent words containing a banned substring", () => {
+    // Word-start matching: "agreed" contains "greed" but is fine, while
+    // actual banned framing still trips the guard.
+    expect(
+      meetsLanguageDiscipline(
+        "Either side agreed to 20 business days notice.",
+      ),
+    ).toBe(true);
+    expect(meetsLanguageDiscipline("Retailers are " + "greed" + "y.")).toBe(
+      false,
+    );
   });
 
   it("withholds generated answers that break the language discipline", async () => {

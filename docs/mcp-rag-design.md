@@ -128,9 +128,10 @@ New resources in `infra/rag.tf`:
   `AMAZON_BEDROCK_TEXT` and `AMAZON_BEDROCK_METADATA`.
 - `aws_iam_role.kb` (`bbb-mcp-kb-role`) with trust for
   `bedrock.amazonaws.com` conditioned on this account and this account's
-  knowledge-base ARNs; policy grants S3 read on the corpus bucket,
-  `s3vectors:*` scoped to the vector bucket and index, and
-  `bedrock:InvokeModel` on the Titan V2 model ARN only.
+  knowledge-base ARNs; policy grants S3 read on the corpus bucket, the
+  specific vector operations Bedrock needs (get/put/query/delete/list),
+  scoped to the vector bucket and index, and `bedrock:InvokeModel` on
+  the Titan V2 model ARN only.
 - `aws_bedrockagent_knowledge_base.docs`: type VECTOR, Titan V2
   embeddings (1024), `storage_configuration { type = "S3_VECTORS" }`.
 - `aws_bedrockagent_data_source.docs`: the corpus bucket, default

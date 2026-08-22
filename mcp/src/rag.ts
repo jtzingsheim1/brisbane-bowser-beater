@@ -40,18 +40,20 @@ type RagClient = Pick<BedrockAgentRuntimeClient, "send">;
 let overrideClient: RagClient | undefined;
 let defaultClient: RagClient | undefined;
 
-// Single attempt with a bounded socket timeout: a stalled upstream call
-// must degrade to a graceful tool error inside the Lambda's 25s budget
+// Single attempt with a bounded timeout: a stalled upstream call must
+// degrade to a graceful tool error inside the Lambda's 25s budget
 // (mirroring the 6s fetch timeouts in data.ts), and an SDK retry would
 // double the worst-case generation spend the cost-guard arithmetic in
-// mcp/README.md is built on.
+// mcp/README.md is built on. requestTimeout is the HTTP/2 handler's
+// stream-inactivity timer, armed from the moment the request is issued,
+// so it bounds hung connects and silent stalls alike.
 function client(): RagClient {
   if (overrideClient) {
     return overrideClient;
   }
   defaultClient ??= new BedrockAgentRuntimeClient({
     maxAttempts: 1,
-    requestHandler: { requestTimeout: 20_000, connectionTimeout: 3_000 },
+    requestHandler: { requestTimeout: 20_000 },
   });
   return defaultClient;
 }
@@ -129,10 +131,16 @@ export type DocAnswer = {
 // Runtime guard on generated text: the corpus and every static string are
 // already swept by tests, but a caller can try to steer generation toward
 // the framing the project's language discipline prohibits, so answers are
-// checked before they are returned.
+// checked before they are returned. Terms are matched at word starts
+// (unlike the raw-substring test sweep) so innocent words that merely
+// contain a term -- "agreed" contains "greed" -- do not trip the guard on
+// free-form generated text.
+const BANNED_PATTERNS = BANNED_LANGUAGE.map(
+  (term) => new RegExp(`\\b${term}`, "i"),
+);
+
 export function meetsLanguageDiscipline(text: string): boolean {
-  const lower = text.toLowerCase();
-  return !BANNED_LANGUAGE.some((term) => lower.includes(term));
+  return !BANNED_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 export async function askDocs(
