@@ -227,7 +227,10 @@ function registerRagTools(server: McpServer, config: RagConfig): void {
           results,
           attribution: ATTRIBUTION,
         });
-      } catch {
+      } catch (err) {
+        // The caller gets a generic message; the real cause stays in
+        // CloudWatch so operators can diagnose it.
+        console.error("search_docs failed:", err);
         return errorResult(
           "The documentation index could not be reached. Try again shortly.",
         );
@@ -268,7 +271,10 @@ function registerRagTools(server: McpServer, config: RagConfig): void {
           );
         }
         return jsonResult({ answer, citations, attribution: ATTRIBUTION });
-      } catch {
+      } catch (err) {
+        // The caller gets a generic message; the real cause stays in
+        // CloudWatch so operators can diagnose it.
+        console.error("ask_docs failed:", err);
         return errorResult(
           "The documentation answerer could not be reached. Try again " +
             "shortly.",

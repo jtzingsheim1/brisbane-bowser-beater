@@ -148,7 +148,11 @@ Changes to existing resources:
   resource-scopeable); `bedrock:InvokeModel` and
   `bedrock:InvokeModelWithResponseStream` on the `au.` inference-profile
   ARN and on the Haiku 4.5 foundation-model ARN in both destination
-  regions (ap-southeast-2 and ap-southeast-4). Nothing else.
+  regions (ap-southeast-2 and ap-southeast-4); and
+  `bedrock:GetInferenceProfile` on the profile ARN, which
+  `RetrieveAndGenerate` needs to resolve the profile's routing before it
+  invokes (without it, retrieval works but generation returns
+  AccessDenied -- found in live E2E). Nothing else.
 - Lambda environment gains `BBB_KB_ID` and `BBB_RAG_MODEL_ARN`.
 - Lambda timeout 20s -> 25s (generation is the new worst case; still
   under API Gateway's 29s integration limit).

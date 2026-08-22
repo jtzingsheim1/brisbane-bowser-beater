@@ -235,6 +235,16 @@ resource "aws_iam_role_policy" "server_rag" {
         ]
         Resource = concat([local.rag_profile_arn], local.rag_model_region_arns)
       },
+      {
+        # RetrieveAndGenerate resolves the geographic inference profile's
+        # routing before invoking, which requires reading the profile.
+        # Without this, retrieval (search_docs) works but generation
+        # (ask_docs) fails with AccessDenied -- verified live 2026-08-22.
+        Sid      = "ResolveInferenceProfile"
+        Effect   = "Allow"
+        Action   = ["bedrock:GetInferenceProfile"]
+        Resource = [local.rag_profile_arn]
+      },
     ]
   })
 }
