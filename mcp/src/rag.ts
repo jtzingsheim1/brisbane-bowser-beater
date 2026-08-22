@@ -132,9 +132,9 @@ export type DocAnswer = {
 // already swept by tests, but a caller can try to steer generation toward
 // the framing the project's language discipline prohibits, so answers are
 // checked before they are returned. Terms are matched at word starts
-// (unlike the raw-substring test sweep) so innocent words that merely
-// contain a term -- "agreed" contains "greed" -- do not trip the guard on
-// free-form generated text.
+// (unlike the raw-substring test sweep) so an innocent word that merely
+// embeds a term mid-word does not trip the guard on free-form generated
+// text; see the regression test for the concrete example.
 const BANNED_PATTERNS = BANNED_LANGUAGE.map(
   (term) => new RegExp(`\\b${term}`, "i"),
 );
