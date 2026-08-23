@@ -139,7 +139,7 @@ aws s3api put-public-access-block --bucket "${STATE_BUCKET}" \
   --public-access-block-configuration \
   'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
 
-# ---- 3a. Permissions boundaries (ceilings for stack roles) -
+# ---- 3a. Permissions boundaries (ceilings for stack roles) -----
 # The ceiling on every role Terraform creates. The deploy role can
 # write those roles' policies, so without a boundary a compromised
 # (or simply mistaken) deploy could grant them anything. Effective
@@ -237,13 +237,13 @@ cat > /tmp/boundary-iam.json <<EOF
 }
 EOF
 
-put_boundary() {  # $1 = policy name, $2 = document path
+put_boundary() {  # $1 = policy name, $2 = document path, $3 = description
   local arn="arn:aws:iam::${ACCOUNT_ID}:policy/$1"
   if aws iam get-policy --policy-arn "$arn" >/dev/null 2>&1; then
     echo "Boundary $1 exists; updating to the current definition"
     # Delete every non-default version first, so the 5-version
-    # limit can never block a future update. Leaves exactly one
-    # version once the new default is created below.
+    # limit can never block a future update: this leaves only the
+    # current default, and the new default created below makes two.
     for v in $(aws iam list-policy-versions --policy-arn "$arn" \
         --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
       aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
@@ -253,14 +253,16 @@ put_boundary() {  # $1 = policy name, $2 = document path
   else
     aws iam create-policy --policy-name "$1" \
       --policy-document "file://$2" \
-      --description "Permissions ceiling for BBB MCP stack roles" \
+      --description "$3" \
       --tags Key=project,Value=bbb-mcp >/dev/null
     echo "Boundary $1 created"
   fi
 }
 
-put_boundary bbb-mcp-boundary-workload /tmp/boundary-workload.json
-put_boundary bbb-mcp-boundary-iam      /tmp/boundary-iam.json
+put_boundary bbb-mcp-boundary-workload /tmp/boundary-workload.json \
+  "Workload ceiling for the BBB MCP server and knowledge-base roles (no IAM)"
+put_boundary bbb-mcp-boundary-iam /tmp/boundary-iam.json \
+  "IAM ceiling for the BBB MCP budget-action role"
 
 # ---- 3b. Deploy role (assumed by GitHub Actions via OIDC) --
 # Trust is pinned to ONE repo AND the `aws` GitHub environment,
@@ -723,50 +725,63 @@ the one-command decommission is unaffected.
 
 ---
 
-## Update for the permissions boundary (2026-08, ~5 min once)
+## Update for the permissions boundaries (2026-08, ~5 min once)
 
-Adds a permissions boundary to the three roles Terraform creates
-(`bbb-mcp-server-exec`, `bbb-mcp-kb-role`, `bbb-mcp-budgets-action`). The
+Adds a permissions boundary to each of the three roles Terraform creates
+(`bbb-mcp-server-exec`, `bbb-mcp-kb-role`, `bbb-mcp-budgets-action`). A
 boundary is a ceiling: a role's effective permissions become the
-intersection of its own policy and the boundary, so anything the boundary
+intersection of its own policy and its boundary, so anything the boundary
 omits is unreachable even if the deploy role writes a wider policy. It
 closes the standing item that the deploy role can rewrite the stack roles'
 policies (issue #101).
 
 **Order matters.** The deploy role cannot attach a boundary until it has
-`iam:PutRolePermissionsBoundary`, and the boundary policy must exist before
-anything references it. Doing the apply first fails the same way the
-2026-08-22 `iam:UpdateRoleDescription` failure did.
+`iam:PutRolePermissionsBoundary`, and the boundary policies must exist
+before anything references them. Doing the apply first fails the same way
+the 2026-08-22 `iam:UpdateRoleDescription` failure did.
 
 1. **Re-run the Step 3 CloudShell script above.** It is idempotent. On this
-   run it creates the `bbb-mcp-boundary` policy (new section 3a) and
-   refreshes the deploy policy so it can attach that boundary -- and only
-   that boundary -- to the stack roles. Nothing else changes on a re-run.
+   run it creates the two boundary policies (new section 3a) and refreshes
+   the deploy policy so it can attach each one to its own set of roles.
+   Nothing else changes on a re-run.
 2. **Then run the deploy workflow** (`apply`). Terraform attaches the
-   boundary to the three roles; expect three in-place role updates and no
+   boundaries to the three roles; expect three in-place role updates and no
    other changes.
 
 If the apply reports `AccessDenied` on `iam:PutRolePermissionsBoundary`,
-step 1 did not take -- re-run it and check the output says the boundary was
+step 1 did not take -- re-run it and check the output says each boundary was
 created or updated.
 
-What the boundary allows, and why it is exactly this: the union of what the
-three roles legitimately do -- CloudWatch Logs writes for the Lambda,
-Bedrock retrieve/generate plus inference-profile lookup, corpus-bucket
-reads and S3 Vectors operations for the knowledge base, and the four IAM
-actions the budget action needs to attach the deny policy to the server
-role. Nothing else. Widening it is a deliberate act that belongs in the
-same change as whatever new capability needs it; a boundary that is too
-tight surfaces as an `AccessDenied` at runtime, not at apply time.
+**Two boundaries, not one, and that split is the point.** The budget
+action's role is the only one that legitimately needs IAM write actions,
+and those actions are scoped to `role/bbb-mcp-server-*` -- a pattern that
+matches the server role itself. A single shared ceiling would therefore
+have let a rewritten server policy detach `bbb-mcp-bedrock-deny`, the cost
+backstop, which denies `bedrock:*` only and so cannot protect itself. So:
 
-Two properties worth knowing, because they are what make this more than
+- `bbb-mcp-boundary-workload` (server + knowledge-base roles): CloudWatch
+  Logs writes, Bedrock retrieve/generate plus inference-profile lookup,
+  corpus-bucket reads, and S3 Vectors operations. **No IAM actions at all.**
+- `bbb-mcp-boundary-iam` (budget-action role only): exactly the four IAM
+  calls that role makes to attach the deny policy when the backstop fires.
+
+The deploy policy pins each role-name pattern to its own boundary in both
+the `iam:CreateRole` condition and the `iam:PutRolePermissionsBoundary`
+grant, so a server or knowledge-base role can never be given the IAM
+ceiling. Widening either is a deliberate act that belongs in the same
+change as whatever new capability needs it; a boundary that is too tight
+surfaces as an `AccessDenied` at runtime, not at apply time.
+
+Three properties worth knowing, because they are what make this more than
 paperwork:
 
-- The boundary policy is created by this script (a human, in CloudShell),
+- The boundary policies are created by this script (a human, in CloudShell),
   **not** by Terraform. The deploy role can version policies named
-  `bbb-mcp-*`, so a Terraform-managed boundary could be widened by the very
-  thing it constrains. The deploy policy carries an explicit `Deny` on
-  editing `bbb-mcp-boundary`, which beats that `Allow`.
+  `bbb-mcp-*`, so Terraform-managed boundaries could be widened by the very
+  thing they constrain. The deploy policy carries an explicit `Deny` on
+  creating *or* editing either boundary policy, which beats that `Allow` --
+  including the case where a boundary is missing and could otherwise be
+  replaced by a permissive policy of the same name.
 - The deploy role has no `iam:DeleteRolePermissionsBoundary` anywhere, and
   its `iam:CreateRole` is conditioned on the matching boundary being set --
   so it can neither strip the ceiling from an existing role nor create a
