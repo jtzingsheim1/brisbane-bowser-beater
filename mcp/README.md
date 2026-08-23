@@ -125,12 +125,18 @@ approved.
   code and the roles that code runs as is inherently powerful within the
   account, so the operative control is that every session of it requires
   a human-approved workflow run -- the name scoping is blast-radius
-  hygiene inside a single-purpose account, not a sandbox.
+  hygiene inside a single-purpose account, not a sandbox. What narrows
+  that caveat: every role the deploy role creates carries a permissions
+  boundary it cannot edit, remove, or create a role without, so the
+  policies it writes are capped by a ceiling set outside the pipeline
+  (see "Update for the permissions boundary" in `infra/BOOTSTRAP.md`).
 - The *runtime role* (what the server itself runs as) can write its own
   CloudWatch log group, retrieve from the one docs knowledge base, and
   invoke generation through the one pinned inference profile (Claude Haiku
   4.5 in the two `au.` destination regions). That is the complete list;
-  the running server can reach no other AWS API by construction.
+  the running server can reach no other AWS API by construction -- and the
+  permissions boundary above holds that true even if its policy were
+  rewritten, since effective permissions are the intersection of the two.
 
 **What the server can and cannot do.**
 

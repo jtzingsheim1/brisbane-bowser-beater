@@ -21,6 +21,10 @@ resource "aws_iam_role" "server_exec" {
   # not by this cosmetic string.
   description = "Execution role for the BBB MCP server Lambda (logs only)"
 
+  # Ceiling on what this role can ever hold, even if a compromised or mistaken
+  # deploy rewrites its policy (see local.permissions_boundary in rag.tf).
+  permissions_boundary = local.permissions_boundary
+
   # The budget action attaches bbb-mcp-bedrock-deny to this role outside
   # Terraform's knowledge when it fires. force_detach_policies keeps the
   # role destroyable in that state, and depending on the deny policy makes
