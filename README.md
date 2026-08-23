@@ -182,6 +182,19 @@ cannot widen. Design notes are in
 [`docs/mcp-rag-design.md`](docs/mcp-rag-design.md); the full security posture
 is in [`mcp/README.md`](mcp/README.md).
 
+**Try it.** The endpoint is public; access needs an API key, which travels
+with my application materials. If you have one, point any MCP client at it:
+
+```bash
+claude mcp add --transport http bbb https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
+  --header "x-api-key: <key>"
+```
+
+Then ask your assistant something like *"using the bbb tools, where is
+Brisbane in its fuel price cycle right now?"* or *"ask the bbb docs how the
+forecast handles uncertainty"*. Without a key the endpoint returns 403, so
+the URL alone is safe to publish. No key? Open an issue and I will send one.
+
 ### Cost & operational safety
 
 The app is built to be cheap to run and safe to leave unattended:
