@@ -799,21 +799,33 @@ needs no extra permission.
 
 ---
 
-## Afterwards: retrieving the MCP API key (post-deploy, ~2 min)
+## Afterwards: retrieving the MCP API keys (post-deploy, ~2 min)
 
-The Terraform stack creates the API key that gates the MCP endpoint. It is
-never printed in workflow logs. After the first successful deploy, open
-CloudShell (still in ap-southeast-2) and run:
+The Terraform stack creates two API keys that gate the MCP endpoint. Neither
+is ever printed in workflow logs. After a successful deploy, open CloudShell
+(still in ap-southeast-2) and run:
 
 ```bash
+# Private operator key
 aws apigateway get-api-keys --name-query bbb-mcp-key --include-values \
-  --query "items[0].value" --output text
+  --query "items[?name=='bbb-mcp-key'].value | [0]" --output text
+
+# Key for general distribution
+aws apigateway get-api-keys --name-query bbb-mcp-key-demo --include-values \
+  --query "items[?name=='bbb-mcp-key-demo'].value | [0]" --output text
 ```
 
-Store it in your password manager. Anyone using the MCP server sends it as
-the `x-api-key` header. Rotation is self-serve at any time: delete the key
-in CloudShell or ask Claude to rotate it via Terraform, then re-run the
-command above.
+Note the exact-name filter in the query. `--name-query` is a PREFIX match, so
+`bbb-mcp-key` alone matches both keys and an `items[0]` shortcut would return
+whichever the API happened to list first. Match on `name` explicitly.
+
+Store both in your password manager. Callers send one as the `x-api-key`
+header. The two are metered separately by the usage plan, which is the point:
+the distributed key can be rotated on a whim or after abuse without touching
+the private one, and exhausting one never affects the other.
+
+Rotation is self-serve: delete the key in CloudShell (or have Terraform
+replace it), re-apply, then re-run the matching command above.
 
 ## Decommissioning (for reference, not now)
 
