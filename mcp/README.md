@@ -35,25 +35,42 @@ every corpus file.
 ## Connecting
 
 The endpoint uses the MCP streamable HTTP transport (stateless) and requires
-an API key in the `x-api-key` header.
+an API key in the `x-api-key` header:
+
+```
+https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp
+```
+
+The URL is public because it is useless without a key: an unauthenticated
+call returns 403 at the gateway, before any Lambda runs. Keys are available
+on request; get in touch if you would like one. Two keys exist and are
+metered separately: one for general distribution and one kept private, so a
+distributed key running out of quota never affects the other, and either can
+be rotated without disturbing the other.
 
 Claude Code:
 
 ```bash
-claude mcp add --transport http bbb <endpoint-url> \
+claude mcp add --transport http bbb https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
   --header "x-api-key: <key>"
 ```
 
-Any other MCP client: point it at the endpoint URL with the same header.
-Simple requests work with plain curl too:
+Any other MCP client: point it at the same URL with the same header. Simple
+requests work with plain curl too:
 
 ```bash
-curl -s <endpoint-url> \
+curl -s https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
   -H "x-api-key: <key>" \
   -H "content-type: application/json" \
   -H "accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
+
+Worth knowing before you try it: `ask_docs` is the only tool that costs
+anything to run, and it is bounded by a monthly per-key quota plus an AWS
+budget action that denies Bedrock outright at 100% of a USD 5 budget. If the
+docs tools ever return errors, that is most likely the backstop having fired,
+not an outage.
 
 ## Architecture
 

@@ -9,8 +9,13 @@ output "lambda_function_name" {
 }
 
 output "api_key_name" {
-  description = "Name of the API key resource. The VALUE is deliberately not output; retrieve it in CloudShell per infra/BOOTSTRAP.md."
+  description = "Name of the private API key resource. The VALUE is deliberately not output; retrieve it in CloudShell per infra/BOOTSTRAP.md."
   value       = aws_api_gateway_api_key.mcp.name
+}
+
+output "demo_api_key_name" {
+  description = "Name of the API key resource for general distribution. The VALUE is deliberately not output; retrieve it in CloudShell per infra/BOOTSTRAP.md."
+  value       = aws_api_gateway_api_key.demo.name
 }
 
 # Consumed by the deploy workflow's corpus-sync + ingestion step. None of

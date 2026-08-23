@@ -156,9 +156,44 @@ The same public forecast data is also served to AI clients through a small
 read-only **[MCP server](mcp/README.md)** (`mcp/` + `infra/`): an AWS
 Lambda behind an auth-gated API Gateway endpoint, defined as a single
 Terraform stack and deployed exclusively via GitHub Actions OIDC, so no
-long-lived AWS credentials exist anywhere. Three tools: the live forecast,
-recent observed history, and the fitted cycle model. Details and the full
-security posture are in [`mcp/README.md`](mcp/README.md).
+long-lived AWS credentials exist anywhere. Five tools.
+
+Three serve the forecast data directly: the live forecast, recent observed
+history, and the fitted cycle model.
+
+The other two — `search_docs` and `ask_docs` — answer questions about the
+project itself from its own documentation, using **retrieval-augmented
+generation built on Amazon Bedrock**: a Bedrock Knowledge Base over an
+[S3 Vectors](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors.html)
+index, Titan Text Embeddings V2 for indexing, and Claude Haiku 4.5 for
+generation through the `au.` geographic inference profile. `search_docs`
+returns matching passages with their sources; `ask_docs` returns a grounded
+answer with citations back to the files it came from. The corpus is a
+curated allowlist of this repo's public docs, not a glob — internal working
+notes are excluded, and a test enforces that.
+
+Generation is the only paid call anywhere in the project, so it sits behind
+layered guards that AWS itself enforces rather than the code: a monthly
+request quota on the API key, per-request caps (input length, retrieved
+chunks, output tokens, single attempt with no retries), and a budget action
+that attaches a `Deny bedrock:*` policy to the server role at 100% of a USD 5
+budget. Every IAM role in the stack also carries a permissions boundary it
+cannot widen. Design notes are in
+[`docs/mcp-rag-design.md`](docs/mcp-rag-design.md); the full security posture
+is in [`mcp/README.md`](mcp/README.md).
+
+**Try it.** The endpoint is public; calls need an API key, available on
+request. With one, point any MCP client at it:
+
+```bash
+claude mcp add --transport http bbb https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
+  --header "x-api-key: <key>"
+```
+
+Then ask your assistant something like *"using the bbb tools, where is
+Brisbane in its fuel price cycle right now?"* or *"ask the bbb docs how the
+forecast handles uncertainty"*. Without a key the endpoint returns 403, so
+the URL alone is safe to publish. Get in touch if you would like a key.
 
 ### Cost & operational safety
 
