@@ -334,7 +334,7 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
   public docs (`mcp/corpus-manifest.txt`) via a Bedrock knowledge base.
   The only paid call anywhere is `ask_docs` generation (Claude Haiku 4.5
   via Bedrock), bounded by layered AWS-enforced cost guards (500/month
-  gateway quota, per-request caps, a USD 5 budget action that denies
+  gateway quota per key, per-request caps, a USD 5 budget action that denies
   Bedrock at 100%) -- see `docs/mcp-rag-design.md`.
 - `infra/` -- single Terraform root module (Lambda + REST API Gateway with
   API key + usage plan; Bedrock knowledge base + S3 Vectors index + corpus
@@ -347,6 +347,14 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
 - Security posture documented in `mcp/README.md`. The language discipline
   (Legal hygiene above) applies to every string the server ships and is
   enforced by a test.
+- The deploy role's policy grants wildcard actions, mostly on
+  name-prefix-scoped resources (`lambda:*`, `s3:*` on the corpus bucket,
+  `s3vectors:*`, `budgets:*`). `apigateway:*` is the exception: API Gateway
+  ARNs carry ids rather than names, so it cannot be prefix-scoped and is
+  scoped to the region instead. All of it is acceptable here only because
+  every session of that role requires a human-approved workflow run from
+  main, and because the account holds nothing else. Do not carry the
+  pattern into anything whose deploys are not approval-gated.
 - The two permissions boundaries that cap every role the stack creates live
   in `infra/BOOTSTRAP.md` (written by a human in CloudShell, deliberately
   not by Terraform, so the deploy cannot widen its own ceiling).

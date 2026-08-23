@@ -26,7 +26,7 @@ one-request-one-tool-execution property.
 MCP client
   | POST /mcp  (x-api-key)
   v
-API Gateway (REST) ......... auth gate + throttle + monthly quota (500)
+API Gateway (REST) ......... auth gate + throttle + monthly quota (500/key)
   v
 Lambda bbb-mcp-server ...... existing three tools unchanged
   |                          search_docs -> bedrock:Retrieve
@@ -109,8 +109,10 @@ Injection posture: the corpus is BBB's own committed docs, so the
 retrieved content is trusted-authored, but the prompt template still
 treats it as data, and the caller's question is bounded to 300 chars.
 Generated answers are checked against the language-discipline term list
-at runtime and withheld on a violation, so a caller cannot steer the
-endpoint into serving prohibited framing. This is stated in the
+at runtime and withheld on a violation. That is a backstop over a term
+list, not a guarantee: it catches the listed entries and, for
+single-word ones, anything beginning with them, but not a paraphrase
+that reaches the same framing in other words. This is stated in the
 security-posture doc.
 
 ## Terraform resources (all in the existing single root module)
@@ -172,17 +174,64 @@ decommission: KB, data source, vector index, buckets, budget action.
 The requirement: a firm backstop in AWS itself, not only in code,
 against a hostile caller driving up the bill. Layers, front to back:
 
-1. **Usage-plan monthly quota: 500 requests/month** (was 100000, sized
-   for a paid-generation era and near-zero real traffic; shared across
-   all five tools). Arithmetic ceiling: even if every one of the 500
-   requests were a worst-case `ask_docs` call (~USD 0.01), the month
-   tops out around **USD 5** before any other layer engages. Throttle
-   (5 rps, burst 10) is unchanged.
-2. **Lambda reserved concurrency** (existing variable): bounds burst
-   independently of the gateway. Honest caveat: on a fresh account AWS
-   refuses reservations that would drop unreserved concurrency below
-   100, so the default stays unreserved until the account's regional
-   limit is raised; layers 1, 3 and 4 do not depend on it.
+1. **Usage-plan monthly quota: 500 requests per key per month** (was
+   100000, sized for a paid-generation era and near-zero real traffic;
+   shared across all five tools). API Gateway meters usage-plan quotas
+   **per key, not across the plan**, so the ceiling scales with the
+   number of keys. With the two keys that exist since #104 (one for
+   general distribution, one private) the ceiling is 1000 requests, or
+   roughly **USD 10** of generation if every single one were a
+   worst-case `ask_docs` call. Throttle (5 rps, burst 10) is per key
+   and unchanged.
+
+   Not a concern at this scale, and the correction is bookkeeping
+   rather than a finding: reaching the ceiling takes a valid API key and
+   a thousand deliberate calls, for a worst case in the region of USD 10
+   on an account holding nothing else. Note what does and does not stop
+   a burst, though: at 5 rps per key across two keys the whole quota can
+   be spent in a couple of minutes, well inside layer 4's hours-long
+   data lag, so the deny action ends that spend afterwards rather than
+   preventing it. What bounds the burst itself is the per-key throttle
+   and the per-request caps in layer 3. Treat ~USD 0.01 as the conservative bound this was
+   sized against rather than a measured rate -- generation runs on
+   Bedrock, which is partner-priced separately from Anthropic's
+   first-party rates, and no Bedrock ap-southeast-2 rate is pinned
+   anywhere in this repo. The layer-4 budget is also account-wide on
+   actual costs with no service filter, so it counts S3 Vectors,
+   CloudWatch Logs, ingestion embeddings and API Gateway too; the two
+   ceilings are not directly comparable and it is not worth pretending
+   otherwise.
+
+   Worth keeping only for the trigger: **the ceiling scales with key
+   count, so re-do this whenever a key is added or the quota moves.**
+   This paragraph was written for one key and silently outlived it.
+   Halving `monthly_quota` to 250 would restore a 500-request total
+   across two keys if that ever seems worth the reduced headroom for a
+   legitimate evaluator.
+2. **Lambda reserved concurrency: deliberately not used as a cost
+   guard.** The variable exists and stays at -1. Considered and dropped
+   2026-08-23 (issue #101) once the arithmetic was checked rather than
+   assumed. A reservation bounds burst, but burst is not what costs
+   money here: layer 1 caps the month by request count, and a given
+   number of calls costs the same serially or in parallel, so
+   concurrency does not enter the spend ceiling. Its other purpose,
+   stopping one function from starving others, has nothing to apply to
+   in a single-function account. Lambda compute at the layer-1 ceiling
+   is around USD 0.08 (1000 invocations x 25 s x 256 MB on arm64), well
+   inside the free tier. Setting it also needs regional headroom: AWS
+   refuses any reservation that would drop unreserved concurrency below
+   100, so a low limit on a new account would have to be raised first.
+
+   Two caveats kept deliberately, so the argument is not read as
+   stronger than it is. Layer 1's quota is enforced **best-effort** (see
+   `infra/variables.tf`), so small overshoot under burst is possible;
+   the 5 rps throttle is the firmer of the two, and a reservation is
+   exactly the guard that would bound overshoot inside layer 4's lag
+   window. And `reserved_concurrent_executions = 0` is an instant hard
+   stop for the function, an operational lever rather than a cost one,
+   available whatever this variable is set to normally. Revisit if the
+   quota is raised substantially, many more keys are added, or a second
+   function joins the account.
 3. **Per-request caps in code**: 300-char inputs, one upstream attempt
    per request (no SDK retries), at most 4 retrieved chunks on the
    generation path (8 for retrieval-only search), 500 output tokens,

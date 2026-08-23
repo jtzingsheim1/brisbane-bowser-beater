@@ -110,16 +110,17 @@ Supabase PostgREST              Bedrock Knowledge Base (bbb-mcp-docs)
 
 **Authentication and abuse limits.** The endpoint requires an API key
 (`x-api-key`), enforced by API Gateway before any code runs. The same
-gateway usage plan throttles to 5 requests/second (burst 10) and caps usage
-at 500 requests per calendar month, so worst-case cost and abuse are
-bounded at the front door. The quota is deliberately small: with `ask_docs`
-able to trigger paid generation (~USD 0.01 worst case per call, and the
-client makes exactly one attempt per request -- no SDK retries), 500
-requests bounds a month at roughly USD 5 even if every metered request were
-a worst-case generation, before any other guard engages. AWS applies
-usage-plan quotas on a best-effort basis, so treat the 500 as a tight bound
-rather than an exact one; the budget action below is the firm layer behind
-it. The key value is never a Terraform output and
+gateway usage plan throttles **each key** to 5 requests/second (burst 10)
+and caps **each key** at 500 requests per calendar month, so worst-case
+cost and abuse are bounded at the front door. Both limits are metered per
+key rather than across the plan, so they scale with key count: with the two
+keys that exist today that is 10 requests/second and 1000 requests a month
+in aggregate. The quota is deliberately small, since `ask_docs` can trigger
+paid generation (the client makes exactly one attempt per request, no SDK
+retries). AWS applies usage-plan quotas on a best-effort basis, so treat
+the number as a tight bound rather than an exact one; the budget action
+below is the firm layer behind it.
+The key value is never a Terraform output and
 never appears in workflow logs; the operator retrieves it directly in
 CloudShell. It does reside (encrypted) in the S3 Terraform state, so the
 set of principals who can read it equals the set who can already call
@@ -136,8 +137,11 @@ approved.
 **Least privilege, both directions.**
 
 - The *deploy role* can manage only resources named `bbb-mcp-*` (IAM,
-  Lambda, logs, the RAG stack's buckets/knowledge base/budget) plus this
-  region's API Gateway surface and the single Terraform state prefix. It
+  Lambda, the RAG stack's buckets/knowledge base/budget) plus this
+  region's API Gateway surface, this region's CloudWatch log groups
+  (neither can be name-scoped: API Gateway ARNs carry ids, and the log
+  group statement covers lifecycle on `log-group:*`), and the single
+  Terraform state prefix. It
   cannot read data or create users. Honest caveat: a role that deploys
   code and the roles that code runs as is inherently powerful within the
   account, so the operative control is that every session of it requires
@@ -186,12 +190,15 @@ approved.
 **Cost guards (AWS-enforced, layered).** `ask_docs` is the one path that
 can spend money, so spending is bounded in AWS itself, not only in code:
 
-1. The usage-plan **monthly quota (500)** is the front-door arithmetic
-   ceiling: quota x worst-case cost per call is roughly USD 5/month.
-2. **Reserved concurrency** on the Lambda bounds burst independently of
-   the gateway once the account's regional concurrency limit allows a
-   reservation (`lambda_reserved_concurrency`); until then the other
-   layers carry it.
+1. The usage-plan **monthly quota (500 per key, so 1000 across the two
+   keys that exist)** is the front-door ceiling on how many paid calls
+   can be made at all.
+2. **Reserved concurrency** is deliberately not used as a cost guard
+   (`lambda_reserved_concurrency` stays at -1). Considered and dropped
+   2026-08-23: layer 1 caps the month by request count, and a given
+   number of calls costs the same serially or in parallel, so
+   concurrency does not enter the spend ceiling. See
+   `docs/mcp-rag-design.md`, cost guards layer 2, for the caveats.
 3. **Per-request caps in code**: 300-character inputs, one upstream
    attempt per request (no retries), at most 4 retrieved chunks on the
    generation path (8 for retrieval-only `search_docs`), 500 output
@@ -215,7 +222,16 @@ retrieved passages as reference data rather than as instructions, callers'
 questions are length-bounded, and generation is capped as above. Generated
 answers are additionally checked against the project's language-discipline
 term list at runtime; an answer a caller has steered into prohibited
-framing is withheld rather than served from this endpoint.
+framing is withheld rather than served from this endpoint. That runtime
+check is a backstop, not a guarantee. The list (in
+`mcp/src/banned-language.ts`) holds prefixes: some truncated stems, some
+whole words, some short phrases. Each is matched case-insensitively with a
+leading word boundary only. So a single-word entry also catches its
+inflections, plus the occasional unrelated word that happens to begin the
+same way; a multi-word entry matches only that exact sequence; and none of
+them catch a paraphrase that reaches the same framing with different
+words. The controls it backs up are the curated corpus and the prompt
+template, which is where the real work is done.
 
 **Blast radius.** Full compromise of the API key lets someone read public
 data and ask documentation questions slightly faster than anonymous
