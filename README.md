@@ -193,7 +193,8 @@ claude mcp add --transport http bbb https://13op7uo7ch.execute-api.ap-southeast-
 Then ask your assistant something like *"using the bbb tools, where is
 Brisbane in its fuel price cycle right now?"* or *"ask the bbb docs how the
 forecast handles uncertainty"*. Without a key the endpoint returns 403, so
-the URL alone is safe to publish. No key? Open an issue and I will send one.
+the URL alone is safe to publish. No key? Get in touch and I will send you
+one.
 
 ### Cost & operational safety
 
