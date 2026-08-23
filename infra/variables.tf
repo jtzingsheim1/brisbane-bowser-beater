@@ -35,12 +35,21 @@ variable "supabase_anon_key" {
   sensitive = true
 }
 
-# Reserved concurrency for the Lambda. Default -1 = no reservation, which is
-# the only value that applies cleanly on a brand-new AWS account: fresh
-# accounts often have a low regional Lambda concurrency limit, and AWS
-# refuses any reservation that would drop unreserved concurrency below 100.
-# The API Gateway usage plan already bounds fan-out; once the account's
-# concurrency limit is raised, set this (e.g. 10) for defense in depth.
+# Reserved concurrency for the Lambda. Stays at -1 (no reservation) as a
+# decision, not as a pending task: considered and dropped 2026-08-23 under
+# issue #101. A reservation bounds burst, but burst is not what costs money
+# here. The usage-plan quota caps the month at a fixed request count, and a
+# fixed number of calls costs the same serially or in parallel, so
+# concurrency does not enter the spend ceiling (Lambda compute at that
+# ceiling is ~USD 0.08, inside the free tier). Its other purpose, keeping
+# one function from starving others, has nothing to apply to in a
+# single-function account, and the usage plan is enforced at the gateway
+# before the function is ever invoked. Setting it also needs regional
+# headroom: AWS refuses any reservation that would drop unreserved
+# concurrency below 100, so a low limit would have to be raised first.
+# See docs/mcp-rag-design.md, cost guards layer 2, for the two caveats
+# kept against this. Revisit only if the quota is raised substantially,
+# many more keys are added, or a second function joins the account.
 variable "lambda_reserved_concurrency" {
   description = "Lambda reserved concurrent executions (-1 = unreserved)."
   type        = number
@@ -49,9 +58,9 @@ variable "lambda_reserved_concurrency" {
 
 # Abuse/cost caps enforced by the API Gateway usage plan. With ask_docs
 # able to trigger paid generation (~USD 0.01 worst case per call), the
-# monthly quota is the front-door arithmetic ceiling on spend: it is
-# shared across all tools, so quota x worst-case-cost bounds the month
-# (~USD 5 at the default) before the budget action ever engages. Sized
+# monthly quota is the front-door ceiling on how many paid calls can be
+# made at all: it is shared across all tools but metered PER KEY, so the
+# ceiling scales with key count (two keys today = 1000 requests). Sized
 # for near-zero real traffic; raise deliberately if usage appears.
 variable "throttle_rate_limit" {
   description = "Steady-state requests per second allowed per API key."

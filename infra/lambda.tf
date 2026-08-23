@@ -84,9 +84,10 @@ resource "aws_lambda_function" "server" {
   # under API Gateway's 29s integration limit.
   timeout = 25
 
-  # Bounds parallel invocations as defense in depth behind the usage-plan
-  # throttle. Defaults to unreserved (-1) so the first apply succeeds on a
-  # fresh, low-concurrency-limit account; see var.lambda_reserved_concurrency.
+  # Unreserved (-1) by decision, not as a provisional default: bounding
+  # parallelism does not bound spend here, because the usage plan caps the
+  # month by request count. See var.lambda_reserved_concurrency for the
+  # reasoning and the two caveats kept against it.
   reserved_concurrent_executions = var.lambda_reserved_concurrency
 
   environment {
