@@ -78,7 +78,18 @@ resource "aws_api_gateway_stage" "prod" {
 # (see infra/BOOTSTRAP.md).
 resource "aws_api_gateway_api_key" "mcp" {
   name        = "bbb-mcp-key"
-  description = "Access key for the BBB MCP endpoint"
+  description = "Access key for the BBB MCP endpoint (private, operator use)"
+}
+
+# A second key for the one handed out with job applications. Quotas in an API
+# Gateway usage plan are metered PER KEY, not shared across the plan, so this
+# is not cosmetic: if the handed-out key is exhausted (or ends up somewhere
+# public and gets scanned), the private key above still has its own full
+# monthly quota and a live demo still works. Revoking or rotating one leaves
+# the other untouched.
+resource "aws_api_gateway_api_key" "demo" {
+  name        = "bbb-mcp-key-demo"
+  description = "Access key shared in application materials; independently metered and revocable"
 }
 
 resource "aws_api_gateway_usage_plan" "mcp" {
@@ -103,6 +114,12 @@ resource "aws_api_gateway_usage_plan" "mcp" {
 
 resource "aws_api_gateway_usage_plan_key" "mcp" {
   key_id        = aws_api_gateway_api_key.mcp.id
+  key_type      = "API_KEY"
+  usage_plan_id = aws_api_gateway_usage_plan.mcp.id
+}
+
+resource "aws_api_gateway_usage_plan_key" "demo" {
+  key_id        = aws_api_gateway_api_key.demo.id
   key_type      = "API_KEY"
   usage_plan_id = aws_api_gateway_usage_plan.mcp.id
 }
