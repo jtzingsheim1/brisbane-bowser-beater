@@ -143,10 +143,14 @@ approved.
   account, so the operative control is that every session of it requires
   a human-approved workflow run -- the name scoping is blast-radius
   hygiene inside a single-purpose account, not a sandbox. What narrows
-  that caveat once the boundary steps in `infra/BOOTSTRAP.md` have been
-  run: each role the deploy role creates carries a permissions boundary
-  it cannot create, edit, remove, or swap, so the policies it writes are
-  capped by a ceiling set outside the pipeline.
+  that caveat, applied to the live account on 2026-08-23: each role the
+  deploy role creates carries a permissions boundary it cannot create,
+  edit, remove, or swap, so the policies it writes are capped by a
+  ceiling set outside the pipeline. The boundaries live in
+  `infra/BOOTSTRAP.md` rather than in Terraform, so the two artifacts can
+  drift apart; CI compares the actions each boundary allows against the
+  actions the roles it caps are granted, and fails on any difference in
+  either direction.
 - The *runtime role* (what the server itself runs as) can write its own
   CloudWatch log group, retrieve from the one docs knowledge base, and
   invoke generation through the one pinned inference profile (Claude Haiku
