@@ -19,6 +19,7 @@ import {
   projectForecast,
   type ObservedPoint,
 } from "../src/lib/forecast/project";
+import { pruneOldRows } from "../src/lib/retention";
 import { readEnv, supabaseAdmin } from "./lib/qld-api.mjs";
 
 const HISTORY_DAYS = 90;
@@ -133,6 +134,20 @@ async function main() {
   );
   if (narrativeErr) throw narrativeErr;
   console.log(`✓ Upserted daily_narrative for ${result.anchorDay}`);
+
+  // Retention (src/lib/retention.ts). This is the job the GitHub Actions
+  // schedule actually runs, so it's where the janitor belongs. Best-effort:
+  // a prune failure is reported but never fails the run that just wrote a
+  // good forecast.
+  const pruned = await pruneOldRows(client);
+  if (pruned.errors.length > 0) {
+    console.warn(`⚠ Retention prune had errors: ${pruned.errors.join("; ")}`);
+  } else {
+    console.log(
+      `✓ Pruned forecasts before ${pruned.forecastsCutoff.slice(0, 10)} ` +
+        `and agent_plans before ${pruned.agentPlansCutoff}`,
+    );
+  }
 }
 
 main().catch((err) => {

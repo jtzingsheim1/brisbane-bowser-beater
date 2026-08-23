@@ -247,16 +247,19 @@ export default function AgentChat() {
               {m.parts.map((p, i) => {
                 if (p.type === "text") {
                   return m.role === "assistant" ? (
-                    <MarkdownMessage key={i} text={p.text} />
+                    <MarkdownMessage key={`${p.type}-${i}`} text={p.text} />
                   ) : (
-                    <div key={i} className="whitespace-pre-wrap">
+                    <div key={`${p.type}-${i}`} className="whitespace-pre-wrap">
                       {p.text}
                     </div>
                   );
                 }
                 if (typeof p.type === "string" && p.type.startsWith("tool-")) {
                   return (
-                    <ToolActivity key={i} part={p as unknown as ToolPart} />
+                    <ToolActivity
+                      key={`${p.type}-${i}`}
+                      part={p as unknown as ToolPart}
+                    />
                   );
                 }
                 return null;

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vitest coverage output (npm test -- --coverage) — generated report
+    // assets, already gitignored.
+    "coverage/**",
     // Python analysis pipeline — its own venv (.venv/) ships thousands of
     // vendored JS files (jupyter et al.) that have nothing to do with our TS.
     "analysis/**",

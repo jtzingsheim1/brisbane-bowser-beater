@@ -14,7 +14,9 @@ const CACHE_TTL_SECONDS = 60;
 // ride out scheduler lag. Falls back to 60 when unset or invalid; clamped to
 // MAX_THRESHOLD_MINUTES to prevent footguns (a pathological value like 1e308
 // would silently disable the gate entirely, contradicting LUL 2.3 intent).
-function configuredThresholdMinutes(): number {
+// Exported so the parse/clamp matrix is unit-testable — this is the off-switch
+// gate; a regression here flips the site live or paused unintentionally.
+export function configuredThresholdMinutes(): number {
   const raw = Number(process.env.BBB_STALENESS_MINUTES);
   if (!Number.isFinite(raw) || raw <= 0) return FALLBACK_THRESHOLD_MINUTES;
   return Math.min(raw, MAX_THRESHOLD_MINUTES);
