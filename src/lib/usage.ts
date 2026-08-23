@@ -5,8 +5,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 // month, region split, on request). Privacy posture (reconciles with the
 // privacy/trust pane):
 //   - No cookies, no client JS, no per-user identity returned to the browser.
-//   - We never store a raw IP. The "visitor_hash" is HMAC-SHA256(USAGE_SALT, ip),
-//     irreversible and rotatable by changing the salt.
+//   - We never store a raw IP. The "visitor_hash" is HMAC-SHA256(USAGE_SALT, ip)
+//     truncated to 32 hex chars (128 bits), irreversible and rotatable by
+//     changing the salt.
 //   - One row per (month, visitor) — counts distinct active visitors and a coarse
 //     region; new-vs-returning is derivable by comparing months at report time.
 //   - Entirely best-effort: any failure is swallowed so it can never break a page
@@ -53,7 +54,10 @@ export async function recordVisit(h: HeaderBag): Promise<void> {
     .slice(0, 32);
 
   try {
-    await supabaseAdmin()
+    // supabase-js returns Postgres errors rather than throwing, so this must
+    // be read explicitly — otherwise a constraint violation would silently
+    // stop all LUL 4.8 usage recording with no signal anywhere.
+    const { error } = await supabaseAdmin()
       .from("usage_monthly_visitors")
       .upsert(
         {
@@ -63,7 +67,10 @@ export async function recordVisit(h: HeaderBag): Promise<void> {
         },
         { onConflict: "period_month,visitor_hash", ignoreDuplicates: true },
       );
+    if (error) {
+      console.error("[usage] record failed (non-fatal):", error.message);
+    }
   } catch (error) {
-    console.error("[usage] record failed (non-fatal)", error);
+    console.error("[usage] record threw (non-fatal)", error);
   }
 }

@@ -17,39 +17,17 @@ const HISTORY_DAYS = 90;
 
 // Honour CRON_SECRET if it's configured (Phase 5); see cron-auth.ts for the
 // open-when-unset and constant-time-compare semantics.
+//
+// Note for future edits: this route is open when CRON_SECRET is unset, and
+// nothing schedules it (the daily job is scripts/generate-forecast.ts under
+// GitHub Actions). Keep it write-only — destructive work belongs in the
+// scheduled script, not behind an endpoint an anonymous caller can reach.
+// See docs/abuse-audit.md vector 6.
 function authorized(req: Request): boolean {
   return bearerAuthorized(
     req.headers.get("authorization"),
     process.env.CRON_SECRET,
   );
-}
-
-// Retention: the daily cron doubles as the janitor, so neither table grows
-// without bound. The UI only ever reads the latest forecast batch — 6 months
-// keeps plenty of history for eyeballing drift. Cached plans are only ever
-// read same-day; 30 days is generous. Best-effort: a failed prune is logged
-// and never fails the forecast write it rides along with.
-const FORECAST_RETENTION_DAYS = 183;
-const AGENT_PLAN_RETENTION_DAYS = 30;
-
-async function pruneOldRows(): Promise<void> {
-  const forecastCutoff = new Date(
-    Date.now() - FORECAST_RETENTION_DAYS * 86_400_000,
-  ).toISOString();
-  const planCutoff = new Date(Date.now() - AGENT_PLAN_RETENTION_DAYS * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  const admin = supabaseAdmin();
-  const [forecasts, plans] = await Promise.all([
-    admin.from("forecasts").delete().lt("generated_at", forecastCutoff),
-    admin.from("agent_plans").delete().lt("plan_date", planCutoff),
-  ]);
-  if (forecasts.error) {
-    console.error("[cron/forecast] forecasts prune failed:", forecasts.error.message);
-  }
-  if (plans.error) {
-    console.error("[cron/forecast] agent_plans prune failed:", plans.error.message);
-  }
 }
 
 export async function GET(req: Request) {
@@ -113,10 +91,6 @@ export async function GET(req: Request) {
       { status: 500 },
     );
   }
-
-  await pruneOldRows().catch((err) => {
-    console.error("[cron/forecast] prune threw (non-fatal):", err);
-  });
 
   return Response.json({
     ok: true,

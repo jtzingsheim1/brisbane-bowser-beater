@@ -37,5 +37,31 @@ describe("cachedPlanResponse", () => {
     // ride inside text-delta events.
     expect(body).toContain("saved plan from earlier today");
     expect(body).toContain("Fill on Tuesday.");
+    // Order matters — the notice must lead, not trail.
+    expect(body.indexOf("saved plan from earlier today")).toBeLessThan(
+      body.indexOf("Fill on Tuesday."),
+    );
+  });
+
+  it("does not claim the cached plan matches the current forecast", async () => {
+    // The cache is keyed by UTC day, but the forecast batch regenerates at
+    // 06:30 AEST — inside that day. Claiming "same forecast" would be false
+    // every morning.
+    const body = await cachedPlanResponse("Fill on Tuesday.").text();
+    expect(body).not.toContain("same forecast");
+  });
+});
+
+describe("hashSituation with cached replays", () => {
+  it("hashes the same whether turn 1 was a cache hit or a live generation", () => {
+    const live = [msg("user", "chip A"), msg("assistant", "Fill Tuesday.")];
+    const replayed = [
+      msg("user", "chip A"),
+      msg(
+        "assistant",
+        "*(Using a saved plan from earlier today for the same situation.)*\n\nFill Tuesday.",
+      ),
+    ];
+    expect(hashSituation(replayed)).toBe(hashSituation(live));
   });
 });

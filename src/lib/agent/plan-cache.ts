@@ -28,10 +28,20 @@ function messageText(message: UIMessage): string {
     .join("");
 }
 
+// The replay notice is part of the assistant text the client keeps and posts
+// back on the next turn, so hashing it would split follow-up turns into two
+// buckets (cache-hit vs live first turn) that can never share an entry.
+// Strip it so a conversation hashes the same either way.
+function withoutCacheNotice(text: string): string {
+  return text.startsWith(CACHED_PLAN_NOTICE)
+    ? text.slice(CACHED_PLAN_NOTICE.length)
+    : text;
+}
+
 export function hashSituation(messages: UIMessage[]): string {
   const canonical = [
     CACHE_NAMESPACE,
-    ...messages.map((m) => `${m.role}:${messageText(m)}`),
+    ...messages.map((m) => `${m.role}:${withoutCacheNotice(messageText(m))}`),
   ].join("\n");
   return createHash("sha256").update(canonical).digest("hex");
 }
@@ -69,8 +79,13 @@ export async function putCachedPlan(
 // the replay says what it is instead of passing as a fresh generation — part
 // of the transparency story alongside the privacy pane's "caching is
 // anonymous" bullet. Added at replay time only; the stored plan stays clean.
+//
+// Deliberately claims only what the cache key guarantees: same situation,
+// same UTC day. It must NOT claim the same forecast — the batch regenerates
+// at 20:30 UTC (06:30 AEST), i.e. inside the cached day, so a morning replay
+// can predate the batch the chart on the same page is rendering.
 export const CACHED_PLAN_NOTICE =
-  "*(Using a saved plan from earlier today — same situation, same forecast, same strategy.)*\n\n";
+  "*(Using a saved plan from earlier today for the same situation.)*\n\n";
 
 // Replays a cached plan as a UI message stream, so the client renders it
 // like a live response (minus the live tool-call markers, which a cache hit
