@@ -22,8 +22,10 @@ resource "aws_iam_role" "server_exec" {
   description = "Execution role for the BBB MCP server Lambda (logs only)"
 
   # Ceiling on what this role can ever hold, even if a compromised or mistaken
-  # deploy rewrites its policy (see local.permissions_boundary in rag.tf).
-  permissions_boundary = local.permissions_boundary
+  # deploy rewrites its policy. The workload ceiling carries no IAM actions at
+  # all, so no rewritten policy here can reach the bedrock-deny cost backstop
+  # attached to this same role (see local.boundary_workload in rag.tf).
+  permissions_boundary = local.boundary_workload
 
   # The budget action attaches bbb-mcp-bedrock-deny to this role outside
   # Terraform's knowledge when it fires. force_detach_policies keeps the

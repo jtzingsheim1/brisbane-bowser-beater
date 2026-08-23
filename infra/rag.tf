@@ -17,12 +17,20 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
 
-  # Permissions ceiling for every role this stack creates. Created by a human
-  # in the bootstrap (infra/BOOTSTRAP.md step 3a), NOT by Terraform: the deploy
-  # role can version bbb-mcp-* policies, so a Terraform-managed boundary could
-  # be widened by the very thing it is meant to constrain. Terraform only
-  # references and attaches it; the deploy policy explicitly denies editing it.
-  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/bbb-mcp-boundary"
+  # Permissions ceilings for the roles this stack creates. Created by a human in
+  # the bootstrap (infra/BOOTSTRAP.md step 3a), NOT by Terraform: the deploy role
+  # can version bbb-mcp-* policies, so a Terraform-managed boundary could be
+  # widened by the very thing it is meant to constrain. Terraform only references
+  # and attaches them; the deploy policy denies creating or editing them.
+  #
+  # Two, because the budget action's role is the only one that legitimately needs
+  # IAM write actions. Folding those into a single shared ceiling would also hand
+  # them to the server role -- whose name matches the role/bbb-mcp-server-*
+  # resource they are scoped to -- letting a rewritten server policy detach the
+  # bedrock-deny cost backstop (which denies bedrock:* only, so it cannot protect
+  # itself). Keeping IAM out of the workload ceiling closes that path.
+  boundary_workload = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/bbb-mcp-boundary-workload"
+  boundary_iam      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/bbb-mcp-boundary-iam"
 
   # Titan V2 is in-region; its ARN carries no account id.
   titan_embed_arn = "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v2:0"
@@ -100,7 +108,7 @@ resource "aws_s3vectors_index" "docs" {
 resource "aws_iam_role" "kb" {
   name                 = "bbb-mcp-kb-role"
   description          = "Service role for the BBB MCP docs knowledge base"
-  permissions_boundary = local.permissions_boundary
+  permissions_boundary = local.boundary_workload
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -283,7 +291,7 @@ resource "aws_iam_policy" "bedrock_deny" {
 resource "aws_iam_role" "budgets" {
   name                 = "bbb-mcp-budgets-action"
   description          = "Execution role for the BBB MCP budget action"
-  permissions_boundary = local.permissions_boundary
+  permissions_boundary = local.boundary_iam
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

@@ -233,14 +233,19 @@ account-scoped:
   modifying `bbb-mcp-deploy` itself stays.
 - Budgets lifecycle on `budget/bbb-mcp-*`.
 
-Added 2026-08-23 (issue #101): every role Terraform creates now carries a
-permissions boundary, so the policies the deploy role writes for them are
-capped by a ceiling set outside the pipeline. The deploy role's
-`iam:CreateRole` is conditioned on that boundary being set, it may attach
-only that one boundary ARN, it holds no
-`iam:DeleteRolePermissionsBoundary`, and an explicit Deny stops it editing
-the boundary policy (which its `policy/bbb-mcp-*` Allow would otherwise
-cover). The boundary itself is created by the human bootstrap, not by
+Added 2026-08-23 (issue #101), and **live only once the two operator steps
+in `infra/BOOTSTRAP.md` have been run** (re-paste Step 3, then apply): the
+roles Terraform creates each carry a permissions boundary, so the policies
+the deploy role writes for them are capped by a ceiling set outside the
+pipeline. Two boundaries, not one -- a workload ceiling for the server and
+knowledge-base roles with no IAM actions at all, and a separate IAM ceiling
+for the budget-action role, so the server role's ceiling cannot reach the
+`bedrock:*` deny policy attached to it. The deploy role's `iam:CreateRole`
+is conditioned on the matching boundary being set, it may attach only the
+boundary belonging to each role pattern, it holds no
+`iam:DeleteRolePermissionsBoundary`, and an explicit Deny stops it creating
+or editing either boundary policy (which its `policy/bbb-mcp-*` Allow would
+otherwise cover). The boundaries are created by the human bootstrap, not by
 Terraform, for that reason. See "Update for the permissions boundary" in
 `infra/BOOTSTRAP.md`.
 

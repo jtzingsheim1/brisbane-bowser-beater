@@ -126,17 +126,19 @@ approved.
   account, so the operative control is that every session of it requires
   a human-approved workflow run -- the name scoping is blast-radius
   hygiene inside a single-purpose account, not a sandbox. What narrows
-  that caveat: every role the deploy role creates carries a permissions
-  boundary it cannot edit, remove, or create a role without, so the
-  policies it writes are capped by a ceiling set outside the pipeline
-  (see "Update for the permissions boundary" in `infra/BOOTSTRAP.md`).
+  that caveat once the boundary steps in `infra/BOOTSTRAP.md` have been
+  run: each role the deploy role creates carries a permissions boundary
+  it cannot create, edit, remove, or swap, so the policies it writes are
+  capped by a ceiling set outside the pipeline.
 - The *runtime role* (what the server itself runs as) can write its own
   CloudWatch log group, retrieve from the one docs knowledge base, and
   invoke generation through the one pinned inference profile (Claude Haiku
   4.5 in the two `au.` destination regions). That is the complete list;
-  the running server can reach no other AWS API by construction -- and the
-  permissions boundary above holds that true even if its policy were
-  rewritten, since effective permissions are the intersection of the two.
+  the running server can reach no other AWS API by construction. Its
+  permissions boundary bounds that to logs, Bedrock, corpus reads and
+  vector operations even if its policy were rewritten -- notably it
+  carries no IAM actions, so a rewritten policy cannot reach the
+  `bedrock:*` deny policy the cost backstop attaches to this same role.
 
 **What the server can and cannot do.**
 
