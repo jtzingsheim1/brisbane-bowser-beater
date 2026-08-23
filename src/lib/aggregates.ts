@@ -258,7 +258,9 @@ function mergeSpans(spans: Deadzone[]): Deadzone[] {
     // Adjacent (last.end + 1 day === s.start) counts as overlapping so two
     // touching gaps render as one box.
     if (last && s.start <= addUtcDays(last.end, 1)) {
-      if (s.end > last.end) last.end = s.end;
+      if (s.end > last.end) {
+        merged[merged.length - 1] = { ...last, end: s.end };
+      }
     } else {
       merged.push({ ...s });
     }
