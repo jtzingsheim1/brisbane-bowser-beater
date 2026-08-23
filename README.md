@@ -182,8 +182,8 @@ cannot widen. Design notes are in
 [`docs/mcp-rag-design.md`](docs/mcp-rag-design.md); the full security posture
 is in [`mcp/README.md`](mcp/README.md).
 
-**Try it.** The endpoint is public; access needs an API key, which travels
-with my application materials. If you have one, point any MCP client at it:
+**Try it.** The endpoint is public; calls need an API key, available on
+request. With one, point any MCP client at it:
 
 ```bash
 claude mcp add --transport http bbb https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
@@ -193,8 +193,7 @@ claude mcp add --transport http bbb https://13op7uo7ch.execute-api.ap-southeast-
 Then ask your assistant something like *"using the bbb tools, where is
 Brisbane in its fuel price cycle right now?"* or *"ask the bbb docs how the
 forecast handles uncertainty"*. Without a key the endpoint returns 403, so
-the URL alone is safe to publish. No key? Get in touch and I will send you
-one.
+the URL alone is safe to publish. Get in touch if you would like a key.
 
 ### Cost & operational safety
 

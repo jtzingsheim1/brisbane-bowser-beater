@@ -81,15 +81,15 @@ resource "aws_api_gateway_api_key" "mcp" {
   description = "Access key for the BBB MCP endpoint (private, operator use)"
 }
 
-# A second key for the one handed out with job applications. Quotas in an API
-# Gateway usage plan are metered PER KEY, not shared across the plan, so this
-# is not cosmetic: if the handed-out key is exhausted (or ends up somewhere
-# public and gets scanned), the private key above still has its own full
-# monthly quota and a live demo still works. Revoking or rotating one leaves
-# the other untouched.
+# A second key for general distribution, kept separate from the operator key
+# above. Quotas in an API Gateway usage plan are metered PER KEY, not shared
+# across the plan, so this is not cosmetic: if the distributed key is
+# exhausted (or ends up somewhere public and gets scanned), the private key
+# still has its own full monthly quota. Rotating or revoking one leaves the
+# other untouched, so the distributed key can be cycled routinely.
 resource "aws_api_gateway_api_key" "demo" {
   name        = "bbb-mcp-key-demo"
-  description = "Access key shared in application materials; independently metered and revocable"
+  description = "Access key for general distribution; independently metered and rotatable"
 }
 
 resource "aws_api_gateway_usage_plan" "mcp" {

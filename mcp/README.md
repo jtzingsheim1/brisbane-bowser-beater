@@ -42,10 +42,11 @@ https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp
 ```
 
 The URL is public because it is useless without a key: an unauthenticated
-call returns 403 at the gateway, before any Lambda runs. Keys travel with my
-application materials; if you do not have one, get in touch and I will send
-you one. Two keys exist and are metered separately, so a shared key running
-out of quota never affects a live demo.
+call returns 403 at the gateway, before any Lambda runs. Keys are available
+on request; get in touch if you would like one. Two keys exist and are
+metered separately: one for general distribution and one kept private, so a
+distributed key running out of quota never affects the other, and either can
+be rotated without disturbing the other.
 
 Claude Code:
 

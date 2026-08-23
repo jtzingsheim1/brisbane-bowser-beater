@@ -14,7 +14,7 @@ output "api_key_name" {
 }
 
 output "demo_api_key_name" {
-  description = "Name of the shareable API key resource (application materials). The VALUE is deliberately not output; retrieve it in CloudShell per infra/BOOTSTRAP.md."
+  description = "Name of the API key resource for general distribution. The VALUE is deliberately not output; retrieve it in CloudShell per infra/BOOTSTRAP.md."
   value       = aws_api_gateway_api_key.demo.name
 }
 
