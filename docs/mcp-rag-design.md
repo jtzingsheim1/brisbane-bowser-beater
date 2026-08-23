@@ -233,8 +233,8 @@ account-scoped:
   modifying `bbb-mcp-deploy` itself stays.
 - Budgets lifecycle on `budget/bbb-mcp-*`.
 
-Added 2026-08-23 (issue #101), and **live only once the two operator steps
-in `infra/BOOTSTRAP.md` have been run** (re-paste Step 3, then apply): the
+Added 2026-08-23 (issue #101) and **applied to the live account the same
+day** (Step 3 re-pasted, then deploy run 8): the
 roles Terraform creates each carry a permissions boundary, so the policies
 the deploy role writes for them are capped by a ceiling set outside the
 pipeline. Two boundaries, not one -- a workload ceiling for the server and
@@ -246,7 +246,17 @@ boundary belonging to each role pattern, it holds no
 `iam:DeleteRolePermissionsBoundary`, and an explicit Deny stops it creating
 or editing either boundary policy (which its `policy/bbb-mcp-*` Allow would
 otherwise cover). The boundaries are created by the human bootstrap, not by
-Terraform, for that reason. See "Update for the permissions boundary" in
+Terraform, for that reason, which also means the boundary documents and
+the role policies they cap are separate artifacts that can drift apart.
+`tests/infra-boundaries.test.ts` compares them on every CI run: each
+boundary must allow exactly the union of the actions granted to the roles
+it caps, in both directions, and each role's own grants are pinned
+individually so two roles sharing a ceiling cannot borrow each other's.
+It compares actions, not resource scoping or conditions. It also holds the
+deploy policy's boundary pinning in place: no role creation or re-capping
+without an `iam:PermissionsBoundary` condition, each role name eligible for
+exactly one ceiling, and the deploy role unable to rewrite its own
+permissions. See "Update for the permissions boundaries" in
 `infra/BOOTSTRAP.md`.
 
 ## Testing and verification

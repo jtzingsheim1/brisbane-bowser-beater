@@ -347,6 +347,16 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
 - Security posture documented in `mcp/README.md`. The language discipline
   (Legal hygiene above) applies to every string the server ships and is
   enforced by a test.
+- The two permissions boundaries that cap every role the stack creates live
+  in `infra/BOOTSTRAP.md` (written by a human in CloudShell, deliberately
+  not by Terraform, so the deploy cannot widen its own ceiling).
+  `tests/infra-boundaries.test.ts` holds those documents and the inline
+  role policies in `infra/*.tf` to exact action parity in both directions,
+  pins each role's grants individually, and checks the deploy policy's
+  boundary pinning. Actions only: resource scoping is not compared. Other
+  grant routes (`aws_iam_role_policy_attachment`) are asserted not to
+  exist rather than modelled, so do not introduce one without extending
+  the guard. Applied to the live account 2026-08-23.
 - House style for this subproject's public docs: no em dashes (use " -- " or
   restructure).
 

@@ -166,10 +166,23 @@ aws s3api put-public-access-block --bucket "${STATE_BUCKET}" \
 #
 # Widen either only alongside a real new capability -- a too-tight
 # boundary shows up as an AccessDenied at runtime, not at apply time.
+#
+# Both documents are checked against the roles they cap on every CI run
+# (tests/infra-boundaries.test.ts). Each boundary must allow exactly the
+# union of the actions granted by the roles it caps, so widening one here
+# without a matching change in infra/*.tf fails the build, and so does
+# the reverse. Actions only: the Resource scoping below is not compared,
+# and is reviewed by eye.
 
 # Workload ceiling: bbb-mcp-server-exec and bbb-mcp-kb-role.
 # Logs + Bedrock for the server; corpus reads, vector ops and Titan
 # embedding for the knowledge base. No IAM of any kind.
+#
+# TODO (issue #101), fold in next time this script is re-pasted: the Logs
+# resource below is log-group:/aws/lambda/bbb-mcp-* , broader than the
+# single group infra/lambda.tf actually grants on. Narrow it to
+# log-group:/aws/lambda/bbb-mcp-server:* . Deferred only because changing
+# it costs a CloudShell paste on its own.
 cat > /tmp/boundary-workload.json <<EOF
 {
   "Version": "2012-10-17",
@@ -727,6 +740,11 @@ the one-command decommission is unaffected.
 
 ## Update for the permissions boundaries (2026-08, ~5 min once)
 
+**Already done on the live account** (2026-08-23, deploy run 8). The steps
+stay here because rebuilding the account from scratch needs them, and
+because re-running the Step 3 paste is how any future boundary change is
+applied.
+
 Adds a permissions boundary to each of the three roles Terraform creates
 (`bbb-mcp-server-exec`, `bbb-mcp-kb-role`, `bbb-mcp-budgets-action`). A
 boundary is a ceiling: a role's effective permissions become the
@@ -796,6 +814,18 @@ paperwork:
 
 `terraform destroy` is unaffected: deleting a role with a boundary attached
 needs no extra permission.
+
+The two boundary documents in section 3a and the role policies in
+`infra/*.tf` are separate artifacts that can drift apart in either
+direction, so CI compares them (`tests/infra-boundaries.test.ts`): each
+boundary must allow exactly the union of the actions granted to the roles
+it caps. A role policy that outgrew its boundary would otherwise fail only
+as a runtime `AccessDenied`, and a boundary that outgrew its roles would
+not fail at all. The same test checks the pinning clauses in the deploy
+policy below: no role creation or re-capping without an
+`iam:PermissionsBoundary` condition, each role name eligible for exactly
+one ceiling, the Deny statements intact, and no path by which the deploy
+role could rewrite its own permissions.
 
 ---
 
