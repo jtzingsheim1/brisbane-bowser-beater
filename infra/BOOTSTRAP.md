@@ -14,6 +14,11 @@ What you end up with:
 - An S3 bucket for Terraform state (versioned, encrypted, public access
   blocked).
 - A zero-spend budget that emails you if the account ever accrues charges.
+- Two customer-managed permissions-boundary policies
+  (`bbb-mcp-boundary-workload`, `bbb-mcp-boundary-iam`) that cap what the
+  roles Terraform creates can ever hold. The deploy role cannot create,
+  edit, remove or swap them, which is what makes them a real ceiling
+  rather than a default.
 - A GitHub environment named `aws` with you as required reviewer, plus three
   repository variables the deploy workflow reads.
 
@@ -134,7 +139,132 @@ aws s3api put-public-access-block --bucket "${STATE_BUCKET}" \
   --public-access-block-configuration \
   'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
 
-# ---- 3. Deploy role (assumed by GitHub Actions via OIDC) ---
+# ---- 3a. Permissions boundaries (ceilings for stack roles) -----
+# The ceiling on every role Terraform creates. The deploy role can
+# write those roles' policies, so without a boundary a compromised
+# (or simply mistaken) deploy could grant them anything. Effective
+# permissions are the INTERSECTION of a role's own policy and its
+# boundary, so anything absent here is unreachable no matter what
+# the deploy writes.
+#
+# Deliberately created HERE by a human and NOT by Terraform: the
+# deploy role can version policies named bbb-mcp-*, so a
+# Terraform-managed boundary could be widened by the very thing it
+# constrains. The deploy policy below adds an explicit Deny on
+# creating or editing these two policies, which beats that Allow.
+#
+# TWO boundaries, not one, because the budget action's role is the
+# only one that legitimately needs IAM write actions. A single
+# union boundary would hand that IAM ceiling to the server role
+# too -- and since it can attach/detach policies on
+# role/bbb-mcp-server-*, which matches the server role itself, a
+# rewritten server policy could then detach the bbb-mcp-bedrock-deny
+# cost backstop (that policy denies bedrock:*, so it cannot protect
+# itself). Splitting keeps IAM entirely outside the workload
+# ceiling. The deploy policy pins each role pattern to its own
+# boundary, so neither can be swapped for the other.
+#
+# Widen either only alongside a real new capability -- a too-tight
+# boundary shows up as an AccessDenied at runtime, not at apply time.
+
+# Workload ceiling: bbb-mcp-server-exec and bbb-mcp-kb-role.
+# Logs + Bedrock for the server; corpus reads, vector ops and Titan
+# embedding for the knowledge base. No IAM of any kind.
+cat > /tmp/boundary-workload.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/lambda/bbb-mcp-*"
+    },
+    {
+      "Sid": "BedrockRetrieveAndGenerate",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:Retrieve",
+        "bedrock:RetrieveAndGenerate",
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:GetInferenceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CorpusRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::bbb-mcp-corpus-*",
+        "arn:aws:s3:::bbb-mcp-corpus-*/*"
+      ]
+    },
+    {
+      "Sid": "VectorOps",
+      "Effect": "Allow",
+      "Action": [
+        "s3vectors:GetVectorBucket", "s3vectors:GetIndex",
+        "s3vectors:ListIndexes", "s3vectors:PutVectors",
+        "s3vectors:GetVectors", "s3vectors:QueryVectors",
+        "s3vectors:DeleteVectors", "s3vectors:ListVectors"
+      ],
+      "Resource": [
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*",
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*/index/*"
+      ]
+    }
+  ]
+}
+EOF
+
+# IAM ceiling: bbb-mcp-budgets-action only. Exactly the four calls
+# the budget action makes to attach the deny policy to the server
+# role when the cost backstop fires.
+cat > /tmp/boundary-iam.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "AttachDenyToServerRole",
+    "Effect": "Allow",
+    "Action": [
+      "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+      "iam:GetRole", "iam:ListAttachedRolePolicies"
+    ],
+    "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*"
+  }]
+}
+EOF
+
+put_boundary() {  # $1 = policy name, $2 = document path, $3 = description
+  local arn="arn:aws:iam::${ACCOUNT_ID}:policy/$1"
+  if aws iam get-policy --policy-arn "$arn" >/dev/null 2>&1; then
+    echo "Boundary $1 exists; updating to the current definition"
+    # Delete every non-default version first, so the 5-version
+    # limit can never block a future update: this leaves only the
+    # current default, and the new default created below makes two.
+    for v in $(aws iam list-policy-versions --policy-arn "$arn" \
+        --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
+      aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
+    done
+    aws iam create-policy-version --policy-arn "$arn" \
+      --policy-document "file://$2" --set-as-default >/dev/null
+  else
+    aws iam create-policy --policy-name "$1" \
+      --policy-document "file://$2" \
+      --description "$3" \
+      --tags Key=project,Value=bbb-mcp >/dev/null
+    echo "Boundary $1 created"
+  fi
+}
+
+put_boundary bbb-mcp-boundary-workload /tmp/boundary-workload.json \
+  "Workload ceiling for the BBB MCP server and knowledge-base roles (no IAM)"
+put_boundary bbb-mcp-boundary-iam /tmp/boundary-iam.json \
+  "IAM ceiling for the BBB MCP budget-action role"
+
+# ---- 3b. Deploy role (assumed by GitHub Actions via OIDC) --
 # Trust is pinned to ONE repo AND the `aws` GitHub environment,
 # which has a required-reviewer rule. So this role can only be
 # assumed by a workflow run a human has explicitly approved.
@@ -192,10 +322,60 @@ cat > /tmp/policy.json <<EOF
       "Resource": "arn:aws:s3:::${STATE_BUCKET}/bbb-mcp/*"
     },
     {
-      "Sid": "StackRoles",
+      "Sid": "StackRolesCreateWorkloadBounded",
+      "Effect": "Allow",
+      "Action": ["iam:CreateRole"],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-workload"
+        }
+      }
+    },
+    {
+      "Sid": "StackRolesCreateIamBounded",
+      "Effect": "Allow",
+      "Action": ["iam:CreateRole"],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
+        }
+      }
+    },
+    {
+      "Sid": "StackRolesSetWorkloadBoundary",
+      "Effect": "Allow",
+      "Action": ["iam:PutRolePermissionsBoundary"],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-workload"
+        }
+      }
+    },
+    {
+      "Sid": "StackRolesSetIamBoundary",
+      "Effect": "Allow",
+      "Action": ["iam:PutRolePermissionsBoundary"],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
+        }
+      }
+    },
+    {
+      "Sid": "StackRolesManage",
       "Effect": "Allow",
       "Action": [
-        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole",
+        "iam:DeleteRole", "iam:GetRole",
         "iam:TagRole", "iam:UntagRole",
         "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
         "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy",
@@ -218,6 +398,25 @@ cat > /tmp/policy.json <<EOF
         "iam:TagPolicy", "iam:UntagPolicy", "iam:ListEntitiesForPolicy"
       ],
       "Resource": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-*"
+    },
+    {
+      "Sid": "DenyBoundaryTampering",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicy", "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion", "iam:SetDefaultPolicyVersion",
+        "iam:DeletePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-workload",
+        "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
+      ]
+    },
+    {
+      "Sid": "DenyBoundaryRemoval",
+      "Effect": "Deny",
+      "Action": ["iam:DeleteRolePermissionsBoundary"],
+      "Resource": "*"
     },
     {
       "Sid": "DenySelfModification",
@@ -386,7 +585,8 @@ else
   echo "Zero-spend budget created (alerts -> ${ALERT_EMAIL})"
 fi
 
-rm -f /tmp/trust.json /tmp/policy.json /tmp/budget.json /tmp/budget-notify.json
+rm -f /tmp/trust.json /tmp/policy.json /tmp/budget.json /tmp/budget-notify.json \
+      /tmp/boundary-workload.json /tmp/boundary-iam.json
 
 echo
 echo "=========================================================="
@@ -525,6 +725,80 @@ the one-command decommission is unaffected.
 
 ---
 
+## Update for the permissions boundaries (2026-08, ~5 min once)
+
+Adds a permissions boundary to each of the three roles Terraform creates
+(`bbb-mcp-server-exec`, `bbb-mcp-kb-role`, `bbb-mcp-budgets-action`). A
+boundary is a ceiling: a role's effective permissions become the
+intersection of its own policy and its boundary, so anything the boundary
+omits is unreachable even if the deploy role writes a wider policy. It
+closes the standing item that the deploy role can rewrite the stack roles'
+policies (issue #101).
+
+**Order matters.** The deploy role cannot attach a boundary until it has
+`iam:PutRolePermissionsBoundary`, and the boundary policies must exist
+before anything references them. Doing the apply first fails the same way
+the 2026-08-22 `iam:UpdateRoleDescription` failure did.
+
+1. **Re-run the Step 3 CloudShell script above.** It is idempotent. On this
+   run it creates the two boundary policies (new section 3a) and refreshes
+   the deploy policy so it can attach each one to its own set of roles.
+   Nothing else changes on a re-run.
+2. **Then run the deploy workflow** (`apply`). Terraform attaches the
+   boundaries to the three roles; expect three in-place role updates and no
+   other changes.
+
+If the apply reports `AccessDenied` on `iam:PutRolePermissionsBoundary`,
+step 1 did not take -- re-run it and check the output says each boundary was
+created or updated.
+
+**Two boundaries, not one, and that split is the point.** The budget
+action's role is the only one that legitimately needs IAM write actions,
+and those actions are scoped to `role/bbb-mcp-server-*` -- a pattern that
+matches the server role itself. A single shared ceiling would therefore
+have let a rewritten server policy detach `bbb-mcp-bedrock-deny`, the cost
+backstop, which denies `bedrock:*` only and so cannot protect itself. So:
+
+- `bbb-mcp-boundary-workload` (server + knowledge-base roles): CloudWatch
+  Logs writes, Bedrock retrieve/generate plus inference-profile lookup,
+  corpus-bucket reads, and S3 Vectors operations. **No IAM actions at all.**
+- `bbb-mcp-boundary-iam` (budget-action role only): exactly the four IAM
+  calls that role makes to attach the deny policy when the backstop fires.
+
+The deploy policy pins each role-name pattern to its own boundary in both
+the `iam:CreateRole` condition and the `iam:PutRolePermissionsBoundary`
+grant, so a server or knowledge-base role can never be given the IAM
+ceiling. Widening either is a deliberate act that belongs in the same
+change as whatever new capability needs it; a boundary that is too tight
+surfaces as an `AccessDenied` at runtime, not at apply time.
+
+Three properties worth knowing, because they are what make this more than
+paperwork:
+
+- The boundary policies are created by this script (a human, in CloudShell),
+  **not** by Terraform. The deploy role can version policies named
+  `bbb-mcp-*`, so Terraform-managed boundaries could be widened by the very
+  thing they constrain. The deploy policy carries an explicit `Deny` on
+  creating *or* editing either boundary policy, which beats that `Allow` --
+  including the case where a boundary is missing and could otherwise be
+  replaced by a permissive policy of the same name.
+- The deploy role has no `iam:DeleteRolePermissionsBoundary` anywhere, and
+  its `iam:CreateRole` is conditioned on the matching boundary being set --
+  so it can neither strip the ceiling from an existing role nor create a
+  fresh unbounded one.
+- That last property makes this change **one-way through the pipeline**:
+  removing `permissions_boundary` from a role in the `.tf` makes Terraform
+  call `DeleteRolePermissionsBoundary`, which the deploy role is denied, so
+  the apply fails with AccessDenied. That is deliberate -- an attacker with
+  the pipeline should not be able to lift the ceiling -- but it means
+  reverting has to be human-driven: remove the `DenyBoundaryRemoval`
+  statement from the deploy policy in CloudShell first, then apply.
+
+`terraform destroy` is unaffected: deleting a role with a boundary attached
+needs no extra permission.
+
+---
+
 ## Afterwards: retrieving the MCP API key (post-deploy, ~2 min)
 
 The Terraform stack creates the API key that gates the MCP endpoint. It is
@@ -548,6 +822,10 @@ The whole stack is one Terraform root module, so teardown is:
 1. Run the deploy workflow in destroy mode (or `terraform destroy` from a
    session), which removes the Lambda, API, key, and logs.
 2. Optionally, in CloudShell: delete the deploy role, OIDC provider, state
-   bucket, and budget (the reverse of Step 3).
+   bucket, budget, and the two `bbb-mcp-boundary-*` policies (the reverse
+   of Step 3). Delete the boundary policies LAST, and only as part of a
+   full teardown: while the deploy role still exists, its `iam:CreateRole`
+   is conditioned on a boundary that would no longer be there, so a later
+   rebuild fails at apply time until Step 3 is re-run to recreate them.
 3. The account itself can then be closed from the console if it is no
    longer wanted.

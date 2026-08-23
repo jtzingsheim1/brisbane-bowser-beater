@@ -43,7 +43,7 @@ Severity columns reflect the audit lanes' own ratings. Effort: S = minutes, M = 
   1. **Agent route input validation**: empty messages, >20 messages, >16k char total, malformed JSON, malformed `x-anthropic-key` shape. The cost-bounding promises in `docs/abuse-audit.md` live entirely in these branches.
   2. **`usage.getClientIp` header precedence**: `x-vercel-forwarded-for` > `x-real-ip` > `x-forwarded-for`, comma-split, trim. Privacy-pane claim relies on this; spoofable-header ordering matters.
   3. **`forecast/params.validate`**: schema_version mismatch, mismatched array lengths, non-positive `period_days`/`amplitude_dollars`. (The original item's `peak_phase` sub-point is stale — no such field in the current schema.)
-- **MCP/infra hardening** — tracked in **issue #101** (permissions boundary on deploy-role-created IAM roles; Lambda reserved concurrency once the account limit allows; watch items).
+- **MCP/infra hardening** — tracked in **issue #101**. The permissions-boundary change merged 2026-08-23 and **takes effect only after the two operator steps** in `infra/BOOTSTRAP.md` ("Update for the permissions boundary"): re-run the Step 3 CloudShell paste, then run the deploy workflow in `apply` mode. Until both are done no role carries a boundary. Once applied, each role Terraform creates carries a ceiling the deploy role cannot create, edit, remove, or swap; the boundaries are created by hand in the bootstrap so the pipeline cannot widen its own limit. Still open there: Lambda reserved concurrency once the account limit allows, plus the watch items.
 - Carried caveat from the landed `liveCoverageRampEnd` work: backdated `transaction_date_utc` can trigger an early threshold-cross — inherent to first-seen semantics; revisit if it ever bites.
 
 ---
