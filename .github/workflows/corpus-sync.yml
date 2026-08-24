@@ -1,0 +1,69 @@
+# Publishes the docs corpus to the RAG knowledge base whenever a corpus
+# doc changes on main. Runs ungated, unlike mcp-deploy.yml, because the
+# merge that landed the doc was already the editorial decision; approving
+# a re-publish of reviewed markdown adds no second look at anything.
+#
+# Security model:
+# - Assumes the bbb-mcp-corpus-sync role via GitHub OIDC. That role is
+#   created by hand in infra/BOOTSTRAP.md (never by the pipeline), its
+#   trust policy only matches pushes to this repo's main branch, and its
+#   permissions are only corpus-bucket writes plus starting/polling one
+#   knowledge base's ingestion jobs. It holds no Lambda, IAM, Terraform
+#   state, or API Gateway access, so an unattended run cannot touch the
+#   deployed stack. tests/corpus-sync-workflow.test.ts and
+#   tests/infra-boundaries.test.ts hold this file and that role's policy
+#   to what this comment describes.
+# - The paths filter below must list exactly the files in
+#   mcp/corpus-manifest.txt (plus this workflow's own inputs); the same
+#   test fails the build if they drift apart.
+# - Every action is pinned to a commit SHA.
+
+name: Sync docs corpus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - mcp/README.md
+      - infra/BOOTSTRAP.md
+      - docs/abuse-audit.md
+      - docs/cycle-visuals-design.md
+      - docs/data-refresh-2026-05.md
+      - docs/deploy-runbook.md
+      - docs/mcp-rag-design.md
+      - mcp/corpus-manifest.txt
+      - mcp/scripts/sync-corpus.sh
+      - .github/workflows/corpus-sync.yml
+  # Manual fallback: first run after bootstrap, or re-publishing after a
+  # transient failure.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: corpus-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_CORPUS_SYNC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync docs corpus and ingest
+        env:
+          KB_ID: ${{ vars.MCP_KB_ID }}
+          DS_ID: ${{ vars.MCP_DATA_SOURCE_ID }}
+          CORPUS_BUCKET: ${{ vars.MCP_CORPUS_BUCKET }}
+        run: mcp/scripts/sync-corpus.sh

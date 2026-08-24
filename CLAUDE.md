@@ -321,6 +321,17 @@ Most conventions inherit from the global standards. Project-specific notes:
 
 ---
 
+## Docs discipline — recording state in committed docs
+
+Recurring failure mode in this repo: a committed doc asserts present-tense state ("is applied", "awaiting first deploy", "the ceiling is 1000"), the state changes, and a follow-up PR exists only to chase the stale sentence. Agreed rules (2026-08-24), applying to every committed doc:
+
+1. **Record events, not state.** "Applied 2026-08-23, deploy run 8" stays true forever; "is applied" rots.
+2. **State the rule, not the derived value.** "500 requests/month per key" survives a second key; "the ceiling is 1000" doesn't.
+3. **Status lives in one place — `PLAN.md`.** Other docs link to it rather than restating it.
+4. **Every PR carries its own `PLAN.md` update, written as post-merge truth.** The status text describes the world after the merge — never "this PR will…" or "pending merge". A PR that changes status without updating `PLAN.md` in the same diff is incomplete.
+
+Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`).
+
 ## MCP server subproject (`mcp/` + `infra/`)
 
 A cleanly bounded subproject serving BBB's public forecast data to AI clients
@@ -340,10 +351,16 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
   API key + usage plan; Bedrock knowledge base + S3 Vectors index + corpus
   bucket + budget action for the RAG stack). `terraform destroy` = full
   decommission.
-- Deploys ONLY via `.github/workflows/mcp-deploy.yml` (GitHub OIDC into the
-  `aws` environment, human-approval gated). No long-lived AWS credentials
-  exist anywhere -- sessions must never hold AWS keys. One-time account setup:
-  `infra/BOOTSTRAP.md`.
+- Code/infra deploys ONLY via `.github/workflows/mcp-deploy.yml` (GitHub
+  OIDC into the `aws` environment, human-approval gated). Docs corpus
+  publishing is the one ungated exception: `.github/workflows/corpus-sync.yml`
+  re-syncs the knowledge base on any push to main touching a corpus doc,
+  under a separate hand-created role (`bbb-mcp-corpus-sync`) narrow enough
+  that an unattended run can only republish docs -- the split exists so doc
+  PRs stop needing a manual deploy, and `tests/corpus-sync-workflow.test.ts`
+  + `tests/infra-boundaries.test.ts` hold both workflow and role to that
+  shape. No long-lived AWS credentials exist anywhere -- sessions must never
+  hold AWS keys. One-time account setup: `infra/BOOTSTRAP.md`.
 - Security posture documented in `mcp/README.md`. The language discipline
   (Legal hygiene above) applies to every string the server ships and is
   enforced by a test.

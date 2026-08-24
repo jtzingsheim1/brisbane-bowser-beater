@@ -21,6 +21,16 @@ const SHELL_VARS: Record<string, string> = {
   REGION: "ap-southeast-2",
   ACCOUNT_ID: PLACEHOLDER_ACCOUNT_ID,
   STATE_BUCKET: `bbb-mcp-tfstate-${PLACEHOLDER_ACCOUNT_ID}`,
+  OIDC_URL: "token.actions.githubusercontent.com",
+  OIDC_ARN: `arn:aws:iam::${PLACEHOLDER_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com`,
+  GITHUB_SUB: "repo:owner@1/repo@2:environment:aws",
+  CORPUS_SYNC_SUB: "repo:owner@1/repo@2:ref:refs/heads/main",
+};
+
+/** The placeholder OIDC subjects, for tests that assert on trust documents. */
+export const PLACEHOLDER_SUBS = {
+  deploy: SHELL_VARS.GITHUB_SUB,
+  corpusSync: SHELL_VARS.CORPUS_SYNC_SUB,
 };
 
 export type TerraformRole = {
@@ -241,19 +251,96 @@ export function bootstrapJson(path: string): HclValue {
   return JSON.parse(body) as HclValue;
 }
 
+/** The bootstrap script with backslash-newline continuations collapsed, so
+ * multi-line aws CLI calls can be matched as single lines. */
+function bootstrapFlatText(): string {
+  return bootstrapText().replace(/\\\n\s*/g, " ");
+}
+
+export type BootstrapRole = {
+  name: string;
+  /** The heredoc path of the trust policy the role is created with. */
+  trustPath: string;
+};
+
 /**
- * The deploy role's name, read from the `aws iam create-role` call rather than
- * from the policy statements the guard checks against it.
+ * Every role the bootstrap script creates by hand, read from the
+ * `aws iam create-role` calls rather than from the policy statements the
+ * guard checks against them. Identified by trust document, not by position,
+ * so reordering the script cannot swap two roles' identities.
  */
-export function bootstrapDeployRoleName(): string {
-  const m = /^\s*aws iam create-role --role-name (\S+)/m.exec(bootstrapText());
-  if (!m) {
+export function bootstrapCreatedRoles(): BootstrapRole[] {
+  const flat = bootstrapFlatText();
+  const out: BootstrapRole[] = [];
+  const re =
+    /aws iam create-role\s+--role-name\s+(\S+)\s+--assume-role-policy-document\s+file:\/\/(\S+)/g;
+  for (const m of flat.matchAll(re)) {
+    out.push({ name: m[1], trustPath: m[2] });
+  }
+  const bare = [...flat.matchAll(/aws iam create-role/g)].length;
+  if (bare !== out.length) {
     throw new Error(
-      "infra/BOOTSTRAP.md no longer creates the deploy role with " +
-        "`aws iam create-role --role-name <name>`",
+      "infra/BOOTSTRAP.md has an `aws iam create-role` call whose shape the " +
+        "guard does not understand (expected --role-name then " +
+        "--assume-role-policy-document file://<path>)",
     );
   }
-  return m[1];
+  return out;
+}
+
+export type BootstrapRolePolicy = {
+  role: string;
+  policyName: string;
+  /** The heredoc path of the policy document attached to the role. */
+  docPath: string;
+};
+
+/** Every inline policy the bootstrap script attaches with put-role-policy. */
+export function bootstrapRolePolicies(): BootstrapRolePolicy[] {
+  const flat = bootstrapFlatText();
+  const out: BootstrapRolePolicy[] = [];
+  const re =
+    /aws iam put-role-policy\s+--role-name\s+(\S+)\s+--policy-name\s+(\S+)\s+--policy-document\s+file:\/\/(\S+)/g;
+  for (const m of flat.matchAll(re)) {
+    out.push({ role: m[1], policyName: m[2], docPath: m[3] });
+  }
+  const bare = [...flat.matchAll(/aws iam put-role-policy/g)].length;
+  if (bare !== out.length) {
+    throw new Error(
+      "infra/BOOTSTRAP.md has an `aws iam put-role-policy` call whose shape " +
+        "the guard does not understand",
+    );
+  }
+  return out;
+}
+
+/**
+ * The deploy role's name: the one hand-created role whose trust policy is the
+ * gated-environment document (/tmp/trust.json).
+ */
+export function bootstrapDeployRoleName(): string {
+  const matches = bootstrapCreatedRoles().filter(
+    (r) => r.trustPath === "/tmp/trust.json",
+  );
+  if (matches.length !== 1) {
+    throw new Error(
+      `infra/BOOTSTRAP.md creates ${matches.length} roles with the deploy ` +
+        "trust policy (/tmp/trust.json); the guard needs exactly one to " +
+        "know which role its deploy-policy checks are about",
+    );
+  }
+  return matches[0].name;
+}
+
+/**
+ * True when the corpus-sync OIDC subject is literally derived from the deploy
+ * subject in the script (same account/repo, environment tail swapped for the
+ * main-branch ref), so the two trust policies cannot disagree on the repo.
+ */
+export function bootstrapCorpusSubDerivation(): boolean {
+  return bootstrapText().includes(
+    'CORPUS_SYNC_SUB="${GITHUB_SUB%:environment:aws}:ref:refs/heads/main"',
+  );
 }
 
 /** The `put_boundary <name> <doc-path>` calls, in file order. */
