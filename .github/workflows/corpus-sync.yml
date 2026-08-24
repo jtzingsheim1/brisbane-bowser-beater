@@ -64,6 +64,31 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Deliberately fails rather than skipping when unconfigured. A skip
+      # would leave the knowledge base quietly serving stale docs, which is
+      # the failure this workflow exists to end -- so an unset variable is
+      # loud. Expected to fire once, on the merge that adds this workflow,
+      # until the operator finishes the setup in infra/BOOTSTRAP.md
+      # ("Update for the ungated corpus sync").
+      - name: Check the sync variables are set
+        env:
+          ROLE: ${{ vars.AWS_CORPUS_SYNC_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
+          KB_ID: ${{ vars.MCP_KB_ID }}
+          DS_ID: ${{ vars.MCP_DATA_SOURCE_ID }}
+          CORPUS_BUCKET: ${{ vars.MCP_CORPUS_BUCKET }}
+        run: |
+          set -u
+          missing=""
+          for name in ROLE REGION KB_ID DS_ID CORPUS_BUCKET; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "Missing repository variables:$missing"
+            echo "See infra/BOOTSTRAP.md, 'Update for the ungated corpus sync'."
+            exit 1
+          fi
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:

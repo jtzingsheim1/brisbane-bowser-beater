@@ -104,7 +104,11 @@ jobs:
         working-directory: infra
         run: |
           set -euo pipefail
-          KB_ID=$(terraform output -raw knowledge_base_id) \
-          DS_ID=$(terraform output -raw data_source_id) \
-          CORPUS_BUCKET=$(terraform output -raw corpus_bucket) \
-            ../mcp/scripts/sync-corpus.sh
+          # Separate statements, not an assignment prefix: under `set -e` a
+          # failing substitution in a prefix does not abort the step, so a
+          # missing output would reach the script as an empty variable.
+          KB_ID=$(terraform output -raw knowledge_base_id)
+          DS_ID=$(terraform output -raw data_source_id)
+          CORPUS_BUCKET=$(terraform output -raw corpus_bucket)
+          export KB_ID DS_ID CORPUS_BUCKET
+          ../mcp/scripts/sync-corpus.sh

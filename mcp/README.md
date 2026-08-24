@@ -248,8 +248,8 @@ this account's infrastructure.
 
 **Decommission.** Run the deploy workflow in `destroy` mode (still gated by
 the same human approval). The one-time bootstrap resources outside the
-stack (OIDC provider, deploy role, state bucket, budget) are removed with
-the reverse of the bootstrap script, documented in
+stack (OIDC provider, deploy role, corpus-sync role, state bucket, budget)
+are removed with the reverse of the bootstrap script, documented in
 [`infra/BOOTSTRAP.md`](../infra/BOOTSTRAP.md).
 
 ## Development

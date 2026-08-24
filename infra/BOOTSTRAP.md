@@ -11,8 +11,8 @@ What you end up with:
   keys**. No IAM users exist at all. The only programmatic access to the
   account is two roles GitHub Actions assumes via OIDC: a deploy role that
   can only be assumed by a workflow run you have personally approved, and a
-  narrow corpus-sync role (bucket writes plus ingestion only) that pushes
-  to main can assume without a gate.
+  narrow corpus-sync role (bucket writes plus ingestion only) that jobs
+  running on main can assume without a gate.
 - An S3 bucket for Terraform state (versioned, encrypted, public access
   blocked).
 - A zero-spend budget that emails you if the account ever accrues charges.
@@ -585,17 +585,29 @@ echo "Deploy policy attached"
 # workflows to this repo: the subject below pins the main REF, not an
 # event or a workflow file, so any job here running on main that asks
 # for an OIDC token can assume this role. AWS accepts conditions on
-# aud/azp/amr/sub only -- job_workflow_ref is a GitHub claim AWS cannot
-# match, and a condition on a claim AWS does not populate evaluates
-# false, which would deny every run rather than narrow anything. So the
-# containment is the role's own narrowness (it can republish docs and
-# nothing else) plus a test asserting only the two known workflows
-# request a token. If that stops being enough -- a workflow legitimately
-# needs a token, say -- the supported way to narrow further is to give
-# this role its own GitHub environment with NO required reviewers and
-# its branches limited to main, then pin the subject to
-# ":environment:<name>"; that keeps it ungated while making the subject
-# unreachable from jobs that do not name the environment.
+# aud/azp/amr/sub only, so it cannot match GitHub's job_workflow_ref
+# claim directly -- and a condition on a claim AWS does not populate
+# evaluates false, which denies every run rather than narrowing one.
+# So the containment is the role's own narrowness (it can republish
+# docs and nothing else) plus a test asserting which workflows may
+# request a token at all.
+#
+# Two ways to narrow further if that stops being enough:
+#
+#   * Give this role its own GitHub environment with NO required
+#     reviewers and its branches limited to main, then pin the subject
+#     to ":environment:<name>". Cheap, and keeps the role ungated, but
+#     it narrows to jobs that OPT IN -- any workflow naming that
+#     environment still gets the subject.
+#   * Customise the repo's subject claim to include job_workflow_ref
+#     and pin the whole string. This does pin one workflow file, but
+#     the customisation is repo-WIDE: it rewrites the subject for every
+#     workflow, so the deploy role's trust policy has to change in the
+#     same sitting or deploys stop authenticating. GitHub also documents
+#     creating the matching cloud-side condition first. How that segment
+#     renders under the immutable subject format this repo uses is not
+#     documented -- confirm with an OIDC debugger run before pasting a
+#     policy that depends on it.
 cat > /tmp/corpus-trust.json <<EOF
 {
   "Version": "2012-10-17",
@@ -805,7 +817,7 @@ All of this is in the repo:
    These are variables rather than secrets on purpose: none of them are
    sensitive. A role ARN is not a credential (assuming the deploy role
    requires a GitHub OIDC token from an approved run of this repo's `aws`
-   environment, and the corpus-sync role one from a push to this repo's
+   environment, and the corpus-sync role one from a job on this repo's
    `main`), and the Supabase URL and anon key are the publishable
    (low-privilege) tier, with Postgres grants/RLS limiting the anon role
    to aggregate read paths only.
@@ -1018,9 +1030,12 @@ The whole stack is one Terraform root module, so teardown is:
 
 1. Run the deploy workflow in destroy mode (or `terraform destroy` from a
    session), which removes the Lambda, API, key, and logs.
-2. Optionally, in CloudShell: delete the deploy role, OIDC provider, state
-   bucket, budget, and the two `bbb-mcp-boundary-*` policies (the reverse
-   of Step 3). Delete the boundary policies LAST, and only as part of a
+2. Optionally, in CloudShell: delete the deploy role, the corpus-sync role
+   (neither is Terraform-managed, so both outlive a destroy -- and the
+   corpus-sync role keeps trusting GitHub OIDC, with a grant on the
+   deterministically-named corpus bucket that would go live again if the
+   stack were ever rebuilt), the OIDC provider, state bucket, budget, and
+   the two `bbb-mcp-boundary-*` policies (the reverse of Step 3). Delete the boundary policies LAST, and only as part of a
    full teardown: while the deploy role still exists, its `iam:CreateRole`
    is conditioned on a boundary that would no longer be there, so a later
    rebuild fails at apply time until Step 3 is re-run to recreate them.

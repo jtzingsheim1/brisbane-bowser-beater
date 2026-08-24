@@ -20,7 +20,9 @@ MANIFEST="$REPO_ROOT/mcp/corpus-manifest.txt"
 # repo-relative markdown paths with a conservative character set, no
 # traversal, no absolute paths.
 STAGE=$(mktemp -d)
-while IFS= read -r entry; do
+# `|| [ -n "$entry" ]` so a manifest whose final line lost its trailing
+# newline still contributes its last entry rather than silently dropping it.
+while IFS= read -r entry || [ -n "$entry" ]; do
   case "$entry" in ''|'#'*) continue ;; esac
   case "$entry" in
     /*|*..*|*[!A-Za-z0-9._/-]*)

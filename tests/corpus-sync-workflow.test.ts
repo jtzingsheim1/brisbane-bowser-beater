@@ -27,6 +27,37 @@ const MANIFEST = "mcp/corpus-manifest.txt";
 
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
+/** Workflow filenames. GitHub does not recurse below this directory. */
+function workflowFiles(): string[] {
+  return readdirSync(join(ROOT, ".github/workflows")).filter(
+    (f) => f.endsWith(".yml") || f.endsWith(".yaml"),
+  );
+}
+
+/** Drops whole-line comments, so prose about a construct is not mistaken
+ * for the construct itself. Trailing comments are handled by the patterns. */
+const uncommented = (text: string) =>
+  text
+    .split("\n")
+    .filter((l) => !/^\s*#/.test(l))
+    .join("\n");
+
+/**
+ * Does a workflow grant itself an OIDC token? Three spellings reach it, and
+ * a guard that caught only the first would read as protective while missing
+ * the two most likely ways someone adds it without thinking:
+ *   permissions:\n  id-token: write   (plain, quoted, or with a comment)
+ *   permissions: write-all            (grants every scope, id-token included)
+ *   permissions: { id-token: write }  (flow mapping)
+ */
+function grantsOidcToken(text: string): boolean {
+  return (
+    /^\s*id-token:\s*['"]?write['"]?\s*(#.*)?$/m.test(text) ||
+    /^\s*permissions:\s*['"]?write-all['"]?\s*(#.*)?$/m.test(text) ||
+    /\{[^}\n]*id-token\s*:/.test(text)
+  );
+}
+
 function manifestEntries(): string[] {
   return read(MANIFEST)
     .split("\n")
@@ -102,10 +133,8 @@ describe("only the two known workflows can mint AWS credentials", () => {
   // and republish what the docs tools serve. Doing that should be a
   // deliberate, reviewed act, so it fails the build first.
   it("no other workflow requests an OIDC token", () => {
-    const dir = join(ROOT, ".github/workflows");
-    const requesting = readdirSync(dir)
-      .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
-      .filter((f) => /^\s*id-token:\s*write\s*$/m.test(read(`.github/workflows/${f}`)))
+    const requesting = workflowFiles()
+      .filter((f) => grantsOidcToken(uncommented(read(`.github/workflows/${f}`))))
       .sort();
     expect(
       requesting,
@@ -118,10 +147,13 @@ describe("only the two known workflows can mint AWS credentials", () => {
   });
 
   it("no workflow uses pull_request_target", () => {
-    const dir = join(ROOT, ".github/workflows");
-    const offenders = readdirSync(dir)
-      .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
-      .filter((f) => /^\s*pull_request_target:/m.test(read(`.github/workflows/${f}`)));
+    const offenders = workflowFiles().filter((f) =>
+      // Block form (`pull_request_target:` on its own line) and the inline
+      // forms (`on: [push, pull_request_target]`, `on: pull_request_target`).
+      /(^\s*pull_request_target\s*:)|(^\s*on:.*\bpull_request_target\b)/m.test(
+        uncommented(read(`.github/workflows/${f}`)),
+      ),
+    );
     expect(
       offenders,
       "pull_request_target runs with full repository permissions in the " +
