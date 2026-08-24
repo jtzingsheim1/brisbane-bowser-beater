@@ -789,7 +789,12 @@ describe("the corpus-sync role stays a docs publisher and nothing more", () => {
     // has to be a reviewed edit rather than a silent one.
   });
 
-  it("trusts only pushes to main, with the repo pinned to the deploy trust's", () => {
+  it("pins the main-ref subject, with the repo pinned to the deploy trust's", () => {
+    // Named for what it checks. The subject restricts by ref, not by event
+    // or workflow, so this proves the heredoc uses the right variable -- not
+    // that only the corpus-sync workflow can assume the role. What bounds
+    // that is the role's narrowness plus the OIDC-token guard in
+    // tests/corpus-sync-workflow.test.ts.
     expect(trustSubject(corpusTrustDoc, "corpus-sync trust")).toBe(
       PLACEHOLDER_SUBS.corpusSync,
     );

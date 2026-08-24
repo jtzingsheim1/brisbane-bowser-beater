@@ -95,8 +95,11 @@ ALERT_EMAIL="you@example.com"   # billing alert email
 # by the repo's OIDC settings preview (the tail is added at token time).
 GITHUB_SUB="repo:jtzingsheim1@43869157/brisbane-bowser-beater@1245389373:environment:aws"
 # ============================================================
-# The subject an ungated push to main sends (no environment tail).
-# Derived from GITHUB_SUB so the two can never disagree on the repo.
+# The subject a job running on this repo's main ref sends (no environment
+# tail, so no approval gate). Derived from GITHUB_SUB so the two can never
+# disagree on the repo. Note this matches by REF, not by event: any job in
+# the repo running on main that requests an OIDC token sends this subject,
+# not only the corpus-sync workflow's pushes. See section 3c.
 CORPUS_SYNC_SUB="${GITHUB_SUB%:environment:aws}:ref:refs/heads/main"
 
 set -u
@@ -577,6 +580,22 @@ echo "Deploy policy attached"
 # pipeline can neither create this role nor widen it.
 # tests/infra-boundaries.test.ts pins its grants and checks that
 # separation on every CI run.
+#
+# Known limit of the trust policy, worth understanding before adding
+# workflows to this repo: the subject below pins the main REF, not an
+# event or a workflow file, so any job here running on main that asks
+# for an OIDC token can assume this role. AWS accepts conditions on
+# aud/azp/amr/sub only -- job_workflow_ref is a GitHub claim AWS cannot
+# match, and a condition on a claim AWS does not populate evaluates
+# false, which would deny every run rather than narrow anything. So the
+# containment is the role's own narrowness (it can republish docs and
+# nothing else) plus a test asserting only the two known workflows
+# request a token. If that stops being enough -- a workflow legitimately
+# needs a token, say -- the supported way to narrow further is to give
+# this role its own GitHub environment with NO required reviewers and
+# its branches limited to main, then pin the subject to
+# ":environment:<name>"; that keeps it ungated while making the subject
+# unreachable from jobs that do not name the environment.
 cat > /tmp/corpus-trust.json <<EOF
 {
   "Version": "2012-10-17",

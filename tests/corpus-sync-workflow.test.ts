@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -83,6 +83,52 @@ describe("the corpus-sync workflow fires for exactly the corpus", () => {
     for (const p of pushPaths(read(CORPUS_SYNC))) {
       expect(() => readFileSync(join(ROOT, p)), p).not.toThrow();
     }
+  });
+});
+
+describe("only the two known workflows can mint AWS credentials", () => {
+  // The corpus-sync role's trust policy pins the OIDC subject
+  // `repo:...:ref:refs/heads/main`, which restricts by REF, not by event:
+  // any job in this repo running on the main ref that requests an OIDC
+  // token produces a matching subject, whatever triggered it. AWS web
+  // identity federation can only condition on aud/azp/amr/sub, so there is
+  // no trust-policy clause that could narrow this to one workflow file --
+  // the narrowing has to be enforced here instead.
+  //
+  // Hence this guard: adding `id-token: write` to any other workflow --
+  // most dangerously a `pull_request_target` one, which runs with full
+  // permissions on the base ref and is triggerable by an outside
+  // contributor -- would silently extend who can assume the ungated role
+  // and republish what the docs tools serve. Doing that should be a
+  // deliberate, reviewed act, so it fails the build first.
+  it("no other workflow requests an OIDC token", () => {
+    const dir = join(ROOT, ".github/workflows");
+    const requesting = readdirSync(dir)
+      .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+      .filter((f) => /^\s*id-token:\s*write\s*$/m.test(read(`.github/workflows/${f}`)))
+      .sort();
+    expect(
+      requesting,
+      "a workflow gained `id-token: write`. It can now assume an AWS role " +
+        "via OIDC -- and if it runs on main, the corpus-sync role's " +
+        "ref-pinned trust policy will match it. Confirm that is intended, " +
+        "and that the workflow is not `pull_request_target` (which an " +
+        "outside contributor can trigger), before adding it here.",
+    ).toEqual(["corpus-sync.yml", "mcp-deploy.yml"]);
+  });
+
+  it("no workflow uses pull_request_target", () => {
+    const dir = join(ROOT, ".github/workflows");
+    const offenders = readdirSync(dir)
+      .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+      .filter((f) => /^\s*pull_request_target:/m.test(read(`.github/workflows/${f}`)));
+    expect(
+      offenders,
+      "pull_request_target runs with full repository permissions in the " +
+        "base-branch context and is triggerable by anyone who can open a " +
+        "pull request. Combined with an OIDC token it is the most likely " +
+        "route to an outsider assuming the ungated corpus-sync role.",
+    ).toEqual([]);
   });
 });
 

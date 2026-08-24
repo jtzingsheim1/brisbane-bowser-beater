@@ -5,14 +5,20 @@
 #
 # Security model:
 # - Assumes the bbb-mcp-corpus-sync role via GitHub OIDC. That role is
-#   created by hand in infra/BOOTSTRAP.md (never by the pipeline), its
-#   trust policy only matches pushes to this repo's main branch, and its
+#   created by hand in infra/BOOTSTRAP.md (never by the pipeline), and its
 #   permissions are only corpus-bucket writes plus starting/polling one
 #   knowledge base's ingestion jobs. It holds no Lambda, IAM, Terraform
 #   state, or API Gateway access, so an unattended run cannot touch the
 #   deployed stack. tests/corpus-sync-workflow.test.ts and
 #   tests/infra-boundaries.test.ts hold this file and that role's policy
 #   to what this comment describes.
+# - Its trust policy pins the OIDC subject to this repo's main ref, which
+#   restricts by REF rather than by event: any job here running on main
+#   that requests a token matches it, not only this workflow's pushes.
+#   AWS web identity federation can condition on aud/azp/amr/sub alone,
+#   so no trust-policy clause can narrow it to one workflow file. What
+#   narrows it instead is that the role can only republish docs, and a
+#   test pinning which workflows may request a token at all.
 # - The paths filter below must list exactly the files in
 #   mcp/corpus-manifest.txt (plus this workflow's own inputs); the same
 #   test fails the build if they drift apart.
