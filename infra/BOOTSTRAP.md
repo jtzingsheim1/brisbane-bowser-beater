@@ -972,6 +972,11 @@ role could rewrite its own permissions.
 
 ## Update for the ungated corpus sync (2026-08, ~5 min once)
 
+**Already done on the live account** (2026-08-24: Step 3 re-pasted, the four
+repository variables added, and the corpus sync verified green end to end --
+files synced and the ingestion job reached COMPLETE). The steps stay here
+because rebuilding the account from scratch needs them.
+
 Adds the `bbb-mcp-corpus-sync` role (new section 3c) so
 `.github/workflows/corpus-sync.yml` can publish doc changes to the
 knowledge base on merge, without the manual deploy that used to be the

@@ -15,7 +15,11 @@ function isIsoDate(s: unknown): s is string {
 // Light runtime validation. The JSON is version-controlled, but a future re-fit
 // (Stage 3, quarterly) could change the schema; fail loudly rather than project
 // off a malformed template.
-function validate(p: CycleParams): CycleParams {
+//
+// Exported for its tests: it runs at module load against the committed
+// artifact, so the rejection branches are only reachable by calling it
+// directly with a malformed template.
+export function validateCycleParams(p: CycleParams): CycleParams {
   if (p.schema_version !== SUPPORTED_SCHEMA_VERSION) {
     throw new Error(
       `cycle_params.json schema_version ${p.schema_version} unsupported (expected ${SUPPORTED_SCHEMA_VERSION})`,
@@ -50,7 +54,7 @@ function validate(p: CycleParams): CycleParams {
   return p;
 }
 
-const cycleParams: CycleParams = validate(raw as CycleParams);
+const cycleParams: CycleParams = validateCycleParams(raw as CycleParams);
 
 export function getCycleParams(): CycleParams {
   return cycleParams;
