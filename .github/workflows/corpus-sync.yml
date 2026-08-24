@@ -1,0 +1,103 @@
+# Publishes the docs corpus to the RAG knowledge base whenever a corpus
+# doc changes on main. Runs ungated, unlike mcp-deploy.yml, because the
+# merge that landed the doc was already the editorial decision; approving
+# a re-publish of reviewed markdown adds no second look at anything.
+#
+# Security model:
+# - Assumes the bbb-mcp-corpus-sync role via GitHub OIDC. That role is
+#   created by hand in infra/BOOTSTRAP.md (never by the pipeline), and its
+#   permissions are only corpus-bucket writes plus starting/polling one
+#   knowledge base's ingestion jobs. It holds no Lambda, IAM, Terraform
+#   state, or API Gateway access, so an unattended run cannot touch the
+#   deployed stack. tests/corpus-sync-workflow.test.ts and
+#   tests/infra-boundaries.test.ts hold this file and that role's policy
+#   to what this comment describes.
+# - Its trust policy pins the OIDC subject to this repo's main ref, which
+#   restricts by REF rather than by event: any job here running on main
+#   that requests a token matches it, not only this workflow's pushes.
+#   AWS web identity federation can condition on aud/azp/amr/sub alone,
+#   so no trust-policy clause can narrow it to one workflow file. What
+#   narrows it instead is that the role can only republish docs, and a
+#   test pinning which workflows may request a token at all.
+# - The paths filter below must list exactly the files in
+#   mcp/corpus-manifest.txt (plus this workflow's own inputs); the same
+#   test fails the build if they drift apart.
+# - Every action is pinned to a commit SHA.
+
+name: Sync docs corpus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - mcp/README.md
+      - infra/BOOTSTRAP.md
+      - docs/abuse-audit.md
+      - docs/cycle-visuals-design.md
+      - docs/data-refresh-2026-05.md
+      - docs/deploy-runbook.md
+      - docs/mcp-rag-design.md
+      - mcp/corpus-manifest.txt
+      - mcp/scripts/sync-corpus.sh
+      - .github/workflows/corpus-sync.yml
+  # Manual fallback: first run after bootstrap, or re-publishing after a
+  # transient failure.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: corpus-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Above the sync script's own bounded waits (start retries plus the
+    # ingestion poll), so a slow ingestion ends with the script's failure
+    # message rather than a job killed mid-run.
+    timeout-minutes: 25
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Deliberately fails rather than skipping when unconfigured. A skip
+      # would leave the knowledge base quietly serving stale docs, which is
+      # the failure this workflow exists to end -- so an unset variable is
+      # loud. Expected to fire once, on the merge that adds this workflow,
+      # until the operator finishes the setup in infra/BOOTSTRAP.md
+      # ("Update for the ungated corpus sync").
+      - name: Check the sync variables are set
+        env:
+          ROLE: ${{ vars.AWS_CORPUS_SYNC_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
+          KB_ID: ${{ vars.MCP_KB_ID }}
+          DS_ID: ${{ vars.MCP_DATA_SOURCE_ID }}
+          CORPUS_BUCKET: ${{ vars.MCP_CORPUS_BUCKET }}
+        run: |
+          set -u
+          missing=""
+          for name in ROLE REGION KB_ID DS_ID CORPUS_BUCKET; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "Missing repository variables:$missing"
+            echo "See infra/BOOTSTRAP.md, 'Update for the ungated corpus sync'."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_CORPUS_SYNC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync docs corpus and ingest
+        env:
+          KB_ID: ${{ vars.MCP_KB_ID }}
+          DS_ID: ${{ vars.MCP_DATA_SOURCE_ID }}
+          CORPUS_BUCKET: ${{ vars.MCP_CORPUS_BUCKET }}
+        run: mcp/scripts/sync-corpus.sh

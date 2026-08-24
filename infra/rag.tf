@@ -1,16 +1,16 @@
 # Bedrock RAG over BBB's own docs (see docs/mcp-rag-design.md).
 #
 # A Bedrock Knowledge Base (Titan Text Embeddings V2) over an S3 Vectors
-# index, fed from a private corpus bucket that the deploy workflow syncs
-# from the curated manifest in mcp/corpus-manifest.txt. The server's
+# index, fed from a private corpus bucket synced from the curated manifest
+# in mcp/corpus-manifest.txt. The server's
 # search_docs tool calls bedrock:Retrieve; ask_docs calls
 # bedrock:RetrieveAndGenerate with Claude Haiku 4.5 through the au.
 # geographic inference profile (Claude is not in-region in Sydney; the
 # au. profile routes Sydney + Melbourne).
 #
-# Ingestion deliberately has no Terraform resource: the deploy workflow
-# runs `aws bedrock-agent start-ingestion-job` after a successful apply
-# and polls it to completion, so corpus updates ride the normal deploy.
+# Ingestion deliberately has no Terraform resource; it runs from a script
+# in CI. Which workflows sync the corpus, and when, is described in
+# docs/mcp-rag-design.md -- not restated here.
 
 data "aws_caller_identity" "current" {}
 
@@ -48,7 +48,8 @@ locals {
 
 # ---------------------------------------------------------------------------
 # Corpus bucket: the markdown docs the knowledge base indexes. Private;
-# written only by the deploy workflow (s3 sync of the curated manifest).
+# written only by CI, as an s3 sync of the curated manifest (see
+# docs/mcp-rag-design.md for which workflows do that).
 # force_destroy keeps `terraform destroy` a one-command decommission.
 
 resource "aws_s3_bucket" "corpus" {

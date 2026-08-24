@@ -38,8 +38,8 @@ Bedrock Knowledge Base ..... type VECTOR, Titan Text Embeddings V2
   +-- S3 Vectors ............ vector bucket + index (float32, 1024,
   |                           cosine; non-filterable metadata keys
   |                           AMAZON_BEDROCK_TEXT / AMAZON_BEDROCK_METADATA)
-  +-- Corpus S3 bucket ...... private; synced by the deploy workflow
-                              from the curated manifest below
+  +-- Corpus S3 bucket ...... private; synced from the curated manifest
+                              below on doc merges and after applies
 Generation (ask_docs only): Claude Haiku 4.5 via the au. geographic
 inference profile (au.anthropic.claude-haiku-4-5-20251001-v1:0; routes
 Sydney + Melbourne, since Claude is not in-region in ap-southeast-2)
@@ -57,8 +57,8 @@ this workload. S3 Vectors has no idle compute cost and is GA in Sydney.
 ## Corpus: curated allowlist, not a glob
 
 The corpus is an explicit manifest (`mcp/corpus-manifest.txt`, one
-repo-relative path per line), synced to the corpus bucket by the deploy
-workflow with `aws s3 sync --delete` so removals propagate:
+repo-relative path per line), synced to the corpus bucket with
+`aws s3 sync --delete` so removals propagate:
 
 - `README.md`
 - `mcp/README.md`
@@ -162,12 +162,17 @@ Changes to existing resources:
 - New outputs: `knowledge_base_id`, `data_source_id`, `corpus_bucket`
   (none of these are secrets; the API key remains non-output).
 
-Ingestion has no Terraform resource. The deploy workflow, after a
-successful apply, stages the manifest files, syncs them to the corpus
-bucket, starts an ingestion job (`aws bedrock-agent
+Ingestion has no Terraform resource. A shared script
+(`mcp/scripts/sync-corpus.sh`) stages the manifest files, syncs them to
+the corpus bucket, starts an ingestion job (`aws bedrock-agent
 start-ingestion-job`), and polls it to COMPLETE (bounded wait, fails the
-run on FAILED or timeout). `terraform destroy` remains a full
-decommission: KB, data source, vector index, buckets, budget action.
+run on FAILED or timeout). Two workflows run it: `corpus-sync.yml`,
+ungated, whenever a push to main touches a corpus doc (so the knowledge
+base tracks the docs without a manual deploy; the merge was the editorial
+decision, and the workflow's narrow role cannot touch anything else), and
+the gated deploy workflow after each apply (so a rebuilt stack is
+populated immediately). `terraform destroy` remains a full decommission:
+KB, data source, vector index, buckets, budget action.
 
 ## Cost guards (AWS-enforced, layered)
 

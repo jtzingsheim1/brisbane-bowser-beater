@@ -10,11 +10,15 @@ import {
 import {
   boundaryLocals,
   bootstrapBoundaryCalls,
+  bootstrapCorpusSubDerivation,
+  bootstrapCreatedRoles,
   bootstrapDeployRoleName,
   bootstrapJson,
+  bootstrapRolePolicies,
   countResources,
   permissionsBoundaryCount,
   PLACEHOLDER_ACCOUNT_ID,
+  PLACEHOLDER_SUBS,
   resourceLabels,
   terraformRolePolicies,
   terraformRoles,
@@ -162,6 +166,16 @@ const deployRoleName = safely(
   "infra/BOOTSTRAP.md deploy role name",
   bootstrapDeployRoleName,
   "",
+);
+const createdRoles = safely(
+  "infra/BOOTSTRAP.md create-role calls",
+  bootstrapCreatedRoles,
+  [],
+);
+const bootstrapPolicies = safely(
+  "infra/BOOTSTRAP.md put-role-policy calls",
+  bootstrapRolePolicies,
+  [],
 );
 
 const roleArn = (name: string) =>
@@ -673,6 +687,146 @@ describe("the deploy role can only cap these roles the intended way", () => {
         `permissions and the boundaries would stop meaning anything. Either ` +
         `narrow the Resource pattern away from the deploy role, or extend ` +
         `the DenySelfModification statement.`,
+    ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The corpus-sync role (infra/BOOTSTRAP.md section 3c) is the one role in the
+// account an UNGATED workflow can assume: any push to main can publish the
+// docs corpus, with no human approval. That is safe exactly as long as the
+// role stays a docs publisher and nothing more, and as long as the gated
+// pipeline cannot widen it -- both of which are claims written into
+// BOOTSTRAP.md and corpus-sync.yml, and both of which could otherwise drift.
+
+const corpusPolicyDoc = safely<HclValue | null>(
+  "corpus-sync policy /tmp/corpus-policy.json",
+  () => bootstrapJson("/tmp/corpus-policy.json"),
+  null,
+);
+const corpusTrustDoc = safely<HclValue | null>(
+  "corpus-sync trust /tmp/corpus-trust.json",
+  () => bootstrapJson("/tmp/corpus-trust.json"),
+  null,
+);
+const deployTrustDoc = safely<HclValue | null>(
+  "deploy trust /tmp/trust.json",
+  () => bootstrapJson("/tmp/trust.json"),
+  null,
+);
+
+const CORPUS_SYNC_ROLE = "bbb-mcp-corpus-sync";
+
+/** The single OIDC subject a trust document accepts, or null. */
+function trustSubject(doc: HclValue | null, what: string): string | null {
+  if (doc === null) return null;
+  const statements = statementsOf(doc, what);
+  if (statements.length !== 1) {
+    throw new Error(`${what} has ${statements.length} statements, expected 1`);
+  }
+  const cond = (statements[0].raw as { Condition?: HclValue }).Condition;
+  if (cond === undefined || typeof cond !== "object" || Array.isArray(cond)) {
+    throw new Error(`${what} has no Condition object`);
+  }
+  const eq = (cond as { StringEquals?: HclValue }).StringEquals;
+  if (eq === undefined || typeof eq !== "object" || Array.isArray(eq)) {
+    throw new Error(`${what} has no StringEquals condition`);
+  }
+  const sub = (eq as Record<string, HclValue>)[
+    "token.actions.githubusercontent.com:sub"
+  ];
+  if (typeof sub !== "string") {
+    throw new Error(`${what} pins no OIDC subject`);
+  }
+  return sub;
+}
+
+describe("the corpus-sync role stays a docs publisher and nothing more", () => {
+  it("the bootstrap creates exactly the two hand-made roles", () => {
+    expect(sorted(createdRoles.map((r) => r.name))).toEqual([
+      CORPUS_SYNC_ROLE,
+      deployRoleName,
+    ]);
+    expect(
+      sorted(bootstrapPolicies.map((p) => `${p.role} <- ${p.docPath}`)),
+    ).toEqual([
+      `${CORPUS_SYNC_ROLE} <- /tmp/corpus-policy.json`,
+      `${deployRoleName} <- /tmp/policy.json`,
+    ]);
+  });
+
+  it("is granted exactly the corpus-publisher actions, no wildcards", () => {
+    expect(corpusPolicyDoc).not.toBeNull();
+    const { actions } = allowedActions(corpusPolicyDoc!, "corpus-sync policy");
+    expect(sorted(actions)).toEqual([
+      "bedrock:GetIngestionJob",
+      "bedrock:StartIngestionJob",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+      "s3:PutObject",
+    ]);
+  });
+
+  it("reaches only the corpus bucket and the account's knowledge bases", () => {
+    // The actions above are safe because of what they point at. s3:PutObject
+    // on the Terraform STATE bucket, say, would let an unattended push
+    // rewrite state; scoped to the corpus bucket it can only republish docs.
+    //
+    // Compared as exact strings, not prefixes: a prefix check would accept a
+    // silent broadening (`knowledge-base/*` widening further, or the bucket
+    // pattern growing a wildcard) while still reading as scoped.
+    expect(corpusPolicyDoc).not.toBeNull();
+    const statements = statementsOf(corpusPolicyDoc!, "corpus-sync policy");
+    const account = PLACEHOLDER_ACCOUNT_ID;
+    expect(sorted(statements.flatMap((st) => resourcesOf(st)))).toEqual([
+      `arn:aws:bedrock:ap-southeast-2:${account}:knowledge-base/*`,
+      `arn:aws:s3:::bbb-mcp-corpus-${account}`,
+      `arn:aws:s3:::bbb-mcp-corpus-${account}/*`,
+    ]);
+    // The knowledge-base wildcard is deliberate (the id does not exist at
+    // bootstrap time) and acceptable only while the account holds this
+    // stack's single knowledge base. Pinned above so widening it past that
+    // has to be a reviewed edit rather than a silent one.
+  });
+
+  it("pins the main-ref subject, with the repo pinned to the deploy trust's", () => {
+    // Named for what it checks. The subject restricts by ref, not by event
+    // or workflow, so this proves the heredoc uses the right variable -- not
+    // that only the corpus-sync workflow can assume the role. What bounds
+    // that is the role's narrowness plus the OIDC-token guard in
+    // tests/corpus-sync-workflow.test.ts.
+    expect(trustSubject(corpusTrustDoc, "corpus-sync trust")).toBe(
+      PLACEHOLDER_SUBS.corpusSync,
+    );
+    expect(trustSubject(deployTrustDoc, "deploy trust")).toBe(
+      PLACEHOLDER_SUBS.deploy,
+    );
+    // The placeholder equality above only proves each heredoc uses the right
+    // variable. The variables agreeing on the repo is a property of the
+    // script line that derives one from the other.
+    expect(
+      bootstrapCorpusSubDerivation(),
+      "CORPUS_SYNC_SUB is no longer derived from GITHUB_SUB in " +
+        "infra/BOOTSTRAP.md, so the two trust policies can disagree on " +
+        "which repo they trust",
+    ).toBe(true);
+  });
+
+  it("cannot be created, rewritten, or deleted by the deploy role", () => {
+    // The ungated role's narrowness only holds if the gated pipeline cannot
+    // widen it. Its name sits outside every pattern the deploy policy
+    // grants IAM actions on; this pins that, wildcard-aware.
+    const arn = roleArn(CORPUS_SYNC_ROLE);
+    const reachable = [...ROLE_MUTATING_ACTIONS, "iam:PassRole"].filter(
+      (action) =>
+        deployStatements.some(
+          (st) => st.effect === "Allow" && covers(st, action, arn),
+        ),
+    );
+    expect(
+      reachable,
+      `the deploy policy allows these on ${CORPUS_SYNC_ROLE}, so the gated ` +
+        `pipeline could widen the one role that runs ungated`,
     ).toEqual([]);
   });
 });

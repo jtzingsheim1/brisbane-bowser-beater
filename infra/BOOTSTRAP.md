@@ -9,8 +9,10 @@ What you end up with:
 
 - A fresh AWS account with MFA on the root user and **zero long-lived access
   keys**. No IAM users exist at all. The only programmatic access to the
-  account is a single deploy role that GitHub Actions assumes via OIDC, and
-  assuming it requires a workflow run that you have personally approved.
+  account is two roles GitHub Actions assumes via OIDC: a deploy role that
+  can only be assumed by a workflow run you have personally approved, and a
+  narrow corpus-sync role (bucket writes plus ingestion only) that jobs
+  running on main can assume without a gate.
 - An S3 bucket for Terraform state (versioned, encrypted, public access
   blocked).
 - A zero-spend budget that emails you if the account ever accrues charges.
@@ -19,8 +21,8 @@ What you end up with:
   roles Terraform creates can ever hold. The deploy role cannot create,
   edit, remove or swap them, which is what makes them a real ceiling
   rather than a default.
-- A GitHub environment named `aws` with you as required reviewer, plus three
-  repository variables the deploy workflow reads.
+- A GitHub environment named `aws` with you as required reviewer, plus the
+  repository variables the two workflows read.
 
 Steps 1 and 2 are console clicking. Step 3 is one paste into CloudShell.
 Step 4 is GitHub settings. Have your password manager, phone, and a
@@ -93,6 +95,12 @@ ALERT_EMAIL="you@example.com"   # billing alert email
 # by the repo's OIDC settings preview (the tail is added at token time).
 GITHUB_SUB="repo:jtzingsheim1@43869157/brisbane-bowser-beater@1245389373:environment:aws"
 # ============================================================
+# The subject a job running on this repo's main ref sends (no environment
+# tail, so no approval gate). Derived from GITHUB_SUB so the two can never
+# disagree on the repo. Note this matches by REF, not by event: any job in
+# the repo running on main that requests an OIDC token sends this subject,
+# not only the corpus-sync workflow's pushes. See section 3c.
+CORPUS_SYNC_SUB="${GITHUB_SUB%:environment:aws}:ref:refs/heads/main"
 
 set -u
 REGION="ap-southeast-2"
@@ -177,12 +185,6 @@ aws s3api put-public-access-block --bucket "${STATE_BUCKET}" \
 # Workload ceiling: bbb-mcp-server-exec and bbb-mcp-kb-role.
 # Logs + Bedrock for the server; corpus reads, vector ops and Titan
 # embedding for the knowledge base. No IAM of any kind.
-#
-# TODO (issue #101), fold in next time this script is re-pasted: the Logs
-# resource below is log-group:/aws/lambda/bbb-mcp-* , broader than the
-# single group infra/lambda.tf actually grants on. Narrow it to
-# log-group:/aws/lambda/bbb-mcp-server:* . Deferred only because changing
-# it costs a CloudShell paste on its own.
 cat > /tmp/boundary-workload.json <<EOF
 {
   "Version": "2012-10-17",
@@ -191,7 +193,7 @@ cat > /tmp/boundary-workload.json <<EOF
       "Sid": "Logs",
       "Effect": "Allow",
       "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
-      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/lambda/bbb-mcp-*"
+      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/lambda/bbb-mcp-server:*"
     },
     {
       "Sid": "BedrockRetrieveAndGenerate",
@@ -563,6 +565,112 @@ aws iam put-role-policy --role-name bbb-mcp-deploy \
   --policy-document file:///tmp/policy.json
 echo "Deploy policy attached"
 
+# ---- 3c. Corpus-sync role (ungated docs publisher) ---------
+# Assumed by .github/workflows/corpus-sync.yml on every push to
+# main that touches a corpus doc, with no environment gate: the
+# merge itself was the editorial decision on that markdown, so a
+# second approval would re-review nothing. What makes ungated
+# acceptable is how little the role holds -- writes to the corpus
+# bucket plus starting/polling ingestion jobs, nothing else. No
+# Lambda, no IAM, no Terraform state, no API Gateway.
+#
+# Created HERE by a human, like the deploy role, and deliberately
+# named outside the bbb-mcp-server-*/bbb-mcp-kb-*/bbb-mcp-budgets-*
+# patterns the deploy policy's IAM statements are scoped to, so the
+# pipeline can neither create this role nor widen it.
+# tests/infra-boundaries.test.ts pins its grants and checks that
+# separation on every CI run.
+#
+# Known limit of the trust policy, worth understanding before adding
+# workflows to this repo: the subject below pins the main REF, not an
+# event or a workflow file, so any job here running on main that asks
+# for an OIDC token can assume this role. AWS accepts conditions on
+# aud/azp/amr/sub only, so it cannot match GitHub's job_workflow_ref
+# claim directly -- and a condition on a claim AWS does not populate
+# evaluates false, which denies every run rather than narrowing one.
+# So the containment is the role's own narrowness (it can republish
+# docs and nothing else) plus a test asserting which workflows may
+# request a token at all.
+#
+# Two ways to narrow further if that stops being enough:
+#
+#   * Give this role its own GitHub environment with NO required
+#     reviewers and its branches limited to main, then pin the subject
+#     to ":environment:<name>". Cheap, and keeps the role ungated, but
+#     it narrows to jobs that OPT IN -- any workflow naming that
+#     environment still gets the subject.
+#   * Customise the repo's subject claim to include job_workflow_ref
+#     and pin the whole string. This does pin one workflow file, but
+#     the customisation is repo-WIDE: it rewrites the subject for every
+#     workflow, so the deploy role's trust policy has to change in the
+#     same sitting or deploys stop authenticating. GitHub also documents
+#     creating the matching cloud-side condition first. How that segment
+#     renders under the immutable subject format this repo uses is not
+#     documented -- confirm with an OIDC debugger run before pasting a
+#     policy that depends on it.
+cat > /tmp/corpus-trust.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "${OIDC_ARN}" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "${OIDC_URL}:aud": "sts.amazonaws.com",
+        "${OIDC_URL}:sub": "${CORPUS_SYNC_SUB}"
+      }
+    }
+  }]
+}
+EOF
+
+# The knowledge-base id is not known at bootstrap time (Terraform
+# generates it), so the ingestion statement is scoped to the account's
+# knowledge bases; the account only ever holds this stack's one.
+cat > /tmp/corpus-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CorpusWrite",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::bbb-mcp-corpus-${ACCOUNT_ID}/*"
+    },
+    {
+      "Sid": "CorpusList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::bbb-mcp-corpus-${ACCOUNT_ID}"
+    },
+    {
+      "Sid": "Ingest",
+      "Effect": "Allow",
+      "Action": ["bedrock:StartIngestionJob", "bedrock:GetIngestionJob"],
+      "Resource": "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:knowledge-base/*"
+    }
+  ]
+}
+EOF
+
+if aws iam get-role --role-name bbb-mcp-corpus-sync >/dev/null 2>&1; then
+  echo "Corpus-sync role already exists; refreshing trust + policy"
+  aws iam update-assume-role-policy --role-name bbb-mcp-corpus-sync \
+    --policy-document file:///tmp/corpus-trust.json
+else
+  aws iam create-role --role-name bbb-mcp-corpus-sync \
+    --assume-role-policy-document file:///tmp/corpus-trust.json \
+    --description "GitHub Actions OIDC role that publishes the BBB MCP docs corpus" \
+    --max-session-duration 3600 \
+    --tags Key=project,Value=bbb-mcp >/dev/null
+  echo "Corpus-sync role created"
+fi
+aws iam put-role-policy --role-name bbb-mcp-corpus-sync \
+  --policy-name bbb-mcp-corpus-sync-policy \
+  --policy-document file:///tmp/corpus-policy.json
+echo "Corpus-sync policy attached"
+
 # ---- 4. Zero-spend budget ----------------------------------
 # AWS Budgets (without actions) is free. Emails you if actual
 # spend ever exceeds one cent.
@@ -599,7 +707,8 @@ else
 fi
 
 rm -f /tmp/trust.json /tmp/policy.json /tmp/budget.json /tmp/budget-notify.json \
-      /tmp/boundary-workload.json /tmp/boundary-iam.json
+      /tmp/boundary-workload.json /tmp/boundary-iam.json \
+      /tmp/corpus-trust.json /tmp/corpus-policy.json
 
 echo
 echo "=========================================================="
@@ -623,10 +732,30 @@ echo "  .env.local -- see Step 4 of the runbook):"
 echo
 echo "    SUPABASE_URL      (= NEXT_PUBLIC_SUPABASE_URL)"
 echo "    SUPABASE_ANON_KEY (= NEXT_PUBLIC_SUPABASE_ANON_KEY)"
+echo
+echo "  For the ungated corpus-sync workflow. The two ids exist only"
+echo "  after the stack's first apply; if either prints as absent,"
+echo "  re-run just this lookup afterwards (or copy them from the"
+echo "  deploy run's 'Show outputs' step):"
+echo
+KB_ID=$(aws bedrock-agent list-knowledge-bases \
+  --query "knowledgeBaseSummaries[?name=='bbb-mcp-docs'].knowledgeBaseId" \
+  --output text 2>/dev/null)
+DS_ID=""
+if [ -n "${KB_ID}" ] && [ "${KB_ID}" != "None" ]; then
+  DS_ID=$(aws bedrock-agent list-data-sources \
+    --knowledge-base-id "${KB_ID}" \
+    --query "dataSourceSummaries[?name=='bbb-mcp-docs-corpus'].dataSourceId" \
+    --output text 2>/dev/null)
+fi
+echo "    AWS_CORPUS_SYNC_ROLE_ARN = arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-corpus-sync"
+echo "    MCP_KB_ID                = ${KB_ID:-<absent until first apply>}"
+echo "    MCP_DATA_SOURCE_ID       = ${DS_ID:-<absent until first apply>}"
+echo "    MCP_CORPUS_BUCKET        = bbb-mcp-corpus-${ACCOUNT_ID}"
 echo "=========================================================="
 ```
 
-4. Copy the three variable values the script prints at the end; Step 4 needs
+4. Copy the variable values the script prints at the end; Step 4 needs
    them.
 
 **A note on what the trust policy pins.** With the immutable subject claim
@@ -674,10 +803,22 @@ All of this is in the repo:
    - `SUPABASE_URL` (same value as `NEXT_PUBLIC_SUPABASE_URL`)
    - `SUPABASE_ANON_KEY` (same value as `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 
+   Then four more, for the ungated corpus-sync workflow, also as printed
+   by the script (the two ids exist only after the stack's first apply;
+   they also appear in the deploy run's "Show outputs" step, and change
+   if the stack is ever destroyed and rebuilt -- update the variables
+   then):
+
+   - `AWS_CORPUS_SYNC_ROLE_ARN`
+   - `MCP_KB_ID`
+   - `MCP_DATA_SOURCE_ID`
+   - `MCP_CORPUS_BUCKET`
+
    These are variables rather than secrets on purpose: none of them are
-   sensitive. A role ARN is not a credential (assuming the role requires a
-   GitHub OIDC token from an approved run of this repo's `aws`
-   environment), and the Supabase URL and anon key are the publishable
+   sensitive. A role ARN is not a credential (assuming the deploy role
+   requires a GitHub OIDC token from an approved run of this repo's `aws`
+   environment, and the corpus-sync role one from a job on this repo's
+   `main`), and the Supabase URL and anon key are the publishable
    (low-privilege) tier, with Postgres grants/RLS limiting the anon role
    to aggregate read paths only.
 
@@ -829,6 +970,32 @@ role could rewrite its own permissions.
 
 ---
 
+## Update for the ungated corpus sync (2026-08, ~5 min once)
+
+Adds the `bbb-mcp-corpus-sync` role (new section 3c) so
+`.github/workflows/corpus-sync.yml` can publish doc changes to the
+knowledge base on merge, without the manual deploy that used to be the
+only re-ingest path. The same paste narrows the workload boundary's Logs
+resource to the one log group the stack actually grants on (the deferred
+issue #101 item).
+
+1. **Re-run the Step 3 CloudShell script above.** Idempotent as always. On
+   this run it creates the corpus-sync role and refreshes the workload
+   boundary; nothing else changes.
+2. **Add the four repository variables** the script prints at the end
+   (listed in Step 4.2): `AWS_CORPUS_SYNC_ROLE_ARN`, `MCP_KB_ID`,
+   `MCP_DATA_SOURCE_ID`, `MCP_CORPUS_BUCKET`.
+
+No environment gate for this workflow, on purpose: the merge that landed a
+doc was the editorial decision, and the role is too narrow to touch the
+deployed stack (section 3c's comment carries the reasoning;
+`tests/infra-boundaries.test.ts` and `tests/corpus-sync-workflow.test.ts`
+hold the role and workflow to it). The gated deploy workflow still syncs
+the corpus after each apply, so infra-driven corpus changes (a rebuilt
+knowledge base, say) do not wait for the next doc merge.
+
+---
+
 ## Afterwards: retrieving the MCP API keys (post-deploy, ~2 min)
 
 The Terraform stack creates two API keys that gate the MCP endpoint. Neither
@@ -863,9 +1030,12 @@ The whole stack is one Terraform root module, so teardown is:
 
 1. Run the deploy workflow in destroy mode (or `terraform destroy` from a
    session), which removes the Lambda, API, key, and logs.
-2. Optionally, in CloudShell: delete the deploy role, OIDC provider, state
-   bucket, budget, and the two `bbb-mcp-boundary-*` policies (the reverse
-   of Step 3). Delete the boundary policies LAST, and only as part of a
+2. Optionally, in CloudShell: delete the deploy role, the corpus-sync role
+   (neither is Terraform-managed, so both outlive a destroy -- and the
+   corpus-sync role keeps trusting GitHub OIDC, with a grant on the
+   deterministically-named corpus bucket that would go live again if the
+   stack were ever rebuilt), the OIDC provider, state bucket, budget, and
+   the two `bbb-mcp-boundary-*` policies (the reverse of Step 3). Delete the boundary policies LAST, and only as part of a
    full teardown: while the deploy role still exists, its `iam:CreateRole`
    is conditioned on a boundary that would no longer be there, so a later
    rebuild fails at apply time until Step 3 is re-run to recreate them.

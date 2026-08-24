@@ -1,7 +1,8 @@
 # Curated corpus for the docs knowledge base (see docs/mcp-rag-design.md).
 # Repo-relative paths, one per line; blank lines and # comments ignored.
-# The deploy workflow syncs exactly these files to the corpus bucket, so
-# removing a line removes the doc from the index on the next deploy.
+# Exactly these files are synced to the corpus bucket, so removing a line
+# removes the doc from the index on the next sync. Which workflows sync,
+# and when, is described in docs/mcp-rag-design.md -- not restated here.
 #
 # Deliberately excluded: CLAUDE.md, PLAN.md, AGENTS.md. They are internal
 # working notes, not public-facing documentation; a unit test enforces

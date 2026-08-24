@@ -27,10 +27,10 @@ per-station data, matching the site itself. Forecasts are estimates, never
 guarantees; every response carries the QLD data attribution.
 
 The docs corpus is a curated allowlist (`mcp/corpus-manifest.txt`) of this
-repository's public documentation, synced to a private bucket on each
-deploy. Internal working notes are deliberately excluded, and a unit test
-enforces both the exclusions and the project's language discipline over
-every corpus file.
+repository's public documentation, synced to a private bucket when a doc
+merges to main (and after each stack deploy). Internal working notes are
+deliberately excluded, and a unit test enforces both the exclusions and
+the project's language discipline over every corpus file.
 
 ## Connecting
 
@@ -105,6 +105,13 @@ Supabase PostgREST              Bedrock Knowledge Base (bbb-mcp-docs)
   which requires human approval. CI (`ci.yml`) typechecks, tests, builds,
   and `terraform validate`s the subproject on every push with no
   credentials at all.
+- **Docs publishing** (`.github/workflows/corpus-sync.yml`): pushes to
+  main that touch a corpus doc re-sync the knowledge base automatically,
+  with no approval gate -- the merge was the editorial decision. It runs
+  under a separate, narrow role (corpus-bucket writes plus ingestion
+  only) that cannot touch the deployed stack, created by hand in
+  `infra/BOOTSTRAP.md` outside the deploy pipeline's reach; tests hold
+  the workflow and the role to that shape.
 
 ## Security posture
 
@@ -241,8 +248,8 @@ this account's infrastructure.
 
 **Decommission.** Run the deploy workflow in `destroy` mode (still gated by
 the same human approval). The one-time bootstrap resources outside the
-stack (OIDC provider, deploy role, state bucket, budget) are removed with
-the reverse of the bootstrap script, documented in
+stack (OIDC provider, deploy role, corpus-sync role, state bucket, budget)
+are removed with the reverse of the bootstrap script, documented in
 [`infra/BOOTSTRAP.md`](../infra/BOOTSTRAP.md).
 
 ## Development
