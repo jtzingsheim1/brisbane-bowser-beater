@@ -771,18 +771,22 @@ describe("the corpus-sync role stays a docs publisher and nothing more", () => {
     // The actions above are safe because of what they point at. s3:PutObject
     // on the Terraform STATE bucket, say, would let an unattended push
     // rewrite state; scoped to the corpus bucket it can only republish docs.
+    //
+    // Compared as exact strings, not prefixes: a prefix check would accept a
+    // silent broadening (`knowledge-base/*` widening further, or the bucket
+    // pattern growing a wildcard) while still reading as scoped.
     expect(corpusPolicyDoc).not.toBeNull();
     const statements = statementsOf(corpusPolicyDoc!, "corpus-sync policy");
-    const offending = statements
-      .flatMap((st) => resourcesOf(st))
-      .filter(
-        (r) =>
-          !r.startsWith("arn:aws:s3:::bbb-mcp-corpus-") &&
-          !r.startsWith(
-            `arn:aws:bedrock:ap-southeast-2:${PLACEHOLDER_ACCOUNT_ID}:knowledge-base/`,
-          ),
-      );
-    expect(offending).toEqual([]);
+    const account = PLACEHOLDER_ACCOUNT_ID;
+    expect(sorted(statements.flatMap((st) => resourcesOf(st)))).toEqual([
+      `arn:aws:bedrock:ap-southeast-2:${account}:knowledge-base/*`,
+      `arn:aws:s3:::bbb-mcp-corpus-${account}`,
+      `arn:aws:s3:::bbb-mcp-corpus-${account}/*`,
+    ]);
+    // The knowledge-base wildcard is deliberate (the id does not exist at
+    // bootstrap time) and acceptable only while the account holds this
+    // stack's single knowledge base. Pinned above so widening it past that
+    // has to be a reviewed edit rather than a silent one.
   });
 
   it("trusts only pushes to main, with the repo pinned to the deploy trust's", () => {
