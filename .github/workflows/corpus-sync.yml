@@ -50,7 +50,10 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Above the sync script's own bounded waits (start retries plus the
+    # ingestion poll), so a slow ingestion ends with the script's failure
+    # message rather than a job killed mid-run.
+    timeout-minutes: 25
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
