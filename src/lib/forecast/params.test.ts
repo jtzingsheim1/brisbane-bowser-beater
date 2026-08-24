@@ -103,15 +103,16 @@ describe("validateCycleParams rejects malformed dates", () => {
     expect(() => validateCycleParams(p)).toThrow(/anomaly_notes/);
   });
 
-  it("refuses a malformed anomaly window date", () => {
+  // All three dates, not just one: the block is hand-authored every re-fit,
+  // and window.start feeds the shaded anomaly band in the history chart
+  // (src/lib/history/artifacts.ts), so a malformed one is not inert.
+  it.each([
+    ["window.start", (p: CycleParams) => (p.anomaly_notes.window.start = "2026-2-01")],
+    ["window.end", (p: CycleParams) => (p.anomaly_notes.window.end = "2026-4-30")],
+    ["peak.date", (p: CycleParams) => (p.anomaly_notes.peak.date = "")],
+  ])("refuses a malformed %s", (_label, corrupt) => {
     const p = valid();
-    p.anomaly_notes.window.end = "2026-4-30";
-    expect(() => validateCycleParams(p)).toThrow(/anomaly_notes/);
-  });
-
-  it("refuses a malformed anomaly peak date", () => {
-    const p = valid();
-    p.anomaly_notes.peak.date = "";
+    corrupt(p);
     expect(() => validateCycleParams(p)).toThrow(/anomaly_notes/);
   });
 });

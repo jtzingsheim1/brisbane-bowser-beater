@@ -27,12 +27,13 @@ const nextConfig: NextConfig = {
           //
           // What is NOT set, and why: a `script-src` worth having would need
           // per-request nonces, because the App Router injects inline scripts
-          // for hydration and streaming. Wiring nonces means middleware on
-          // every request AND opting every page out of static rendering --
-          // which is how this site serves the chart and the maintenance page.
-          // The alternative, `script-src 'self' 'unsafe-inline'`, permits
-          // exactly the injection a CSP is meant to stop, so it would buy a
-          // header that reads protective and is not.
+          // for hydration and streaming. That means a `proxy.ts` minting a
+          // nonce on every HTML request, and threading it through. (Nonces
+          // also require dynamic rendering, but that costs nothing here --
+          // `connection()` in the root layout already makes every page
+          // dynamic.) The alternative, `script-src 'self' 'unsafe-inline'`,
+          // permits exactly the injection a CSP is meant to stop, so it would
+          // buy a header that reads protective and is not.
           //
           // Paying that cost would be worth it against a real XSS surface.
           // There isn't one today: no `dangerouslySetInnerHTML`, no inline

@@ -72,5 +72,6 @@ describe("getClientIp parsing", () => {
     expect(getClientIp(headers({ "x-real-ip": "   " }))).toBeNull();
     expect(getClientIp(headers({ "x-forwarded-for": "" }))).toBeNull();
     expect(getClientIp(headers({ "x-vercel-forwarded-for": " , 10.0.0.1" }))).toBeNull();
+    expect(getClientIp(headers({ "x-forwarded-for": " , 10.0.0.1" }))).toBeNull();
   });
 });

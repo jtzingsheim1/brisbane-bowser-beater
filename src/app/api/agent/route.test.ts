@@ -182,10 +182,23 @@ describe("BYO-key handling", () => {
     expect(res.status).toBe(200);
   });
 
-  it("ignores a whitespace-only key header and uses the server key", async () => {
+  it("falls through to the server key when the key header is empty", async () => {
+    // Named for what it pins. The route also calls .trim(), but Headers
+    // normalises away leading/trailing whitespace before the route sees the
+    // value, so a whitespace-only header arrives as "" and the trim is
+    // unreachable belt-and-braces rather than a behaviour to assert.
     const res = await POST(post({ messages: [message("hi")] }, { "x-anthropic-key": "   " }));
     expect(res.status).toBe(200);
     expect(createAnthropicMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["at the length limit", `sk-ant-${"x".repeat(193)}`, 200],
+    ["one over the length limit", `sk-ant-${"x".repeat(194)}`, 400],
+  ])("handles a key %s", async (_label, key, expected) => {
+    expect(key.length).toBe(expected === 200 ? 200 : 201);
+    const res = await POST(post({ messages: [message("hi")] }, { "x-anthropic-key": key }));
+    expect(res.status).toBe(expected);
   });
 });
 
