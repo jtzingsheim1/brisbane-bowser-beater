@@ -60,8 +60,8 @@ variable "lambda_reserved_concurrency" {
 # able to trigger paid generation (~USD 0.01 worst case per call), the
 # monthly quota is the front-door ceiling on how many paid calls can be
 # made at all: it is shared across all tools but metered PER KEY, so the
-# ceiling scales with key count (two keys today = 1000 requests). Sized
-# for near-zero real traffic; raise deliberately if usage appears.
+# aggregate ceiling scales with key count. Sized for near-zero real
+# traffic; raise deliberately if usage appears.
 variable "throttle_rate_limit" {
   description = "Steady-state requests per second allowed per API key."
   type        = number
