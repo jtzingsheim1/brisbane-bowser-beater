@@ -182,18 +182,19 @@ against a hostile caller driving up the bill. Layers, front to back:
 1. **Usage-plan monthly quota: 500 requests per key per month** (was
    100000, sized for a paid-generation era and near-zero real traffic;
    shared across all five tools). API Gateway meters usage-plan quotas
-   **per key, not across the plan**, so the ceiling scales with the
-   number of keys. With the two keys that exist since #104 (one for
-   general distribution, one private) the ceiling is 1000 requests, or
-   roughly **USD 10** of generation if every single one were a
+   **per key, not across the plan**, so the aggregate ceiling scales
+   with the number of keys minted (the second key arrived in #104: one
+   for general distribution, one private). Per key, the quota is
+   roughly **USD 5** of generation if every single request were a
    worst-case `ask_docs` call. Throttle (5 rps, burst 10) is per key
    and unchanged.
 
    Not a concern at this scale, and the correction is bookkeeping
-   rather than a finding: reaching the ceiling takes a valid API key and
-   a thousand deliberate calls, for a worst case in the region of USD 10
+   rather than a finding: reaching a key's ceiling takes a valid API key
+   and hundreds of deliberate calls, for a per-key worst case in the
+   region of USD 5
    on an account holding nothing else. Note what does and does not stop
-   a burst, though: at 5 rps per key across two keys the whole quota can
+   a burst, though: at 5 rps a key's whole quota can
    be spent in a couple of minutes, well inside layer 4's hours-long
    data lag, so the deny action ends that spend afterwards rather than
    preventing it. What bounds the burst itself is the per-key throttle
@@ -207,12 +208,14 @@ against a hostile caller driving up the bill. Layers, front to back:
    ceilings are not directly comparable and it is not worth pretending
    otherwise.
 
-   Worth keeping only for the trigger: **the ceiling scales with key
-   count, so re-do this whenever a key is added or the quota moves.**
-   This paragraph was written for one key and silently outlived it.
-   Halving `monthly_quota` to 250 would restore a 500-request total
-   across two keys if that ever seems worth the reduced headroom for a
-   legitimate evaluator.
+   Worth keeping only for the trigger: **the aggregate ceiling scales
+   with key count, so re-check the budget comparison whenever a key is
+   added or the quota moves.** (An earlier version of this paragraph
+   stated a one-key aggregate and silently outlived it; the figures are
+   now per key, which survives key changes.) Halving `monthly_quota`
+   would halve each key's ceiling if the aggregate ever seems worth
+   capping back down at the cost of reduced headroom for a legitimate
+   key holder.
 2. **Lambda reserved concurrency: deliberately not used as a cost
    guard.** The variable exists and stays at -1. Considered and dropped
    2026-08-23 (issue #101) once the arithmetic was checked rather than
@@ -243,7 +246,8 @@ against a hostile caller driving up the bill. Layers, front to back:
    temperature 0, one tool execution per metered request (batching
    already rejected).
 4. **Budget action in Terraform**: an account-wide (no service filter)
-   USD 5 monthly budget on actual costs, with an `APPLY_IAM_POLICY`
+   monthly budget on actual costs (`budget_limit_usd`, deliberately
+   small), with an `APPLY_IAM_POLICY`
    action (automatic approval) that attaches the customer-managed
    `Deny bedrock:*` policy to the Lambda execution role at 100% of
    budget. Post-deploy verification includes confirming the action shows

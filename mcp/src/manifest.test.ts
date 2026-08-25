@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BANNED_LANGUAGE } from "./banned-language.js";
+import {
+  AUDIENCE_ANCHORED_TERMS,
+  BANNED_LANGUAGE,
+} from "./banned-language.js";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "../..");
 
@@ -67,14 +70,25 @@ describe("corpus manifest", () => {
     }
   });
 
-  it("keeps banned framing out of every corpus doc", () => {
+  // Shared by both discipline sweeps so their mechanics cannot diverge:
+  // case-insensitive substring match over every corpus doc.
+  function sweepCorpus(terms: readonly string[], label: string) {
     for (const entry of manifestEntries()) {
       const text = readFileSync(join(REPO_ROOT, entry), "utf-8").toLowerCase();
-      for (const banned of BANNED_LANGUAGE) {
-        expect(text, `banned term "${banned}" in ${entry}`).not.toContain(
-          banned,
-        );
+      for (const term of terms) {
+        expect(text, `${label} "${term}" in ${entry}`).not.toContain(term);
       }
     }
+  }
+
+  it("keeps banned framing out of every corpus doc", () => {
+    sweepCorpus(BANNED_LANGUAGE, "banned term");
+  });
+
+  it("keeps reader-anchored framing out of every corpus doc", () => {
+    // Corpus docs describe what the project does, never who is assumed
+    // to read it (see banned-language.ts). A hit here means the doc
+    // needs rewording, not the list loosening.
+    sweepCorpus(AUDIENCE_ANCHORED_TERMS, "reader-anchored term");
   });
 });

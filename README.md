@@ -176,8 +176,9 @@ Generation is the only paid call anywhere in the project, so it sits behind
 layered guards that AWS itself enforces rather than the code: a monthly
 request quota on the API key, per-request caps (input length, retrieved
 chunks, output tokens, single attempt with no retries), and a budget action
-that attaches a `Deny bedrock:*` policy to the server role at 100% of a USD 5
-budget. Every IAM role in the stack also carries a permissions boundary it
+that attaches a `Deny bedrock:*` policy to the server role at 100% of a small
+monthly budget (`budget_limit_usd` in the Terraform stack). Every IAM role in
+the stack also carries a permissions boundary it
 cannot widen. Design notes are in
 [`docs/mcp-rag-design.md`](docs/mcp-rag-design.md); the full security posture
 is in [`mcp/README.md`](mcp/README.md).
@@ -202,9 +203,9 @@ The app is built to be cheap to run and safe to leave unattended:
 - **Hard spend cap** on the Anthropic key, plus per-IP rate limiting, aggressive
   caching, and per-call token/step caps — so the only paid surface (the agent)
   can't run away. See [`docs/abuse-audit.md`](docs/abuse-audit.md).
-- **Self-policing on stale data:** if the latest ingestion is older than 60
-  minutes, the app shows a "temporarily unavailable" page instead of stale
-  licensed data — no human needed.
+- **Self-policing on stale data:** if the latest ingestion is older than a
+  configured freshness threshold, the app shows a "temporarily unavailable"
+  page instead of stale licensed data — no human needed.
 - **Kill switch:** a single env var (`BBB_PUBLIC`) flips the whole site to a
   paused page for instant takedown.
 

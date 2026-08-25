@@ -345,8 +345,8 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
   public docs (`mcp/corpus-manifest.txt`) via a Bedrock knowledge base.
   The only paid call anywhere is `ask_docs` generation (Claude Haiku 4.5
   via Bedrock), bounded by layered AWS-enforced cost guards (500/month
-  gateway quota per key, per-request caps, a USD 5 budget action that denies
-  Bedrock at 100%) -- see `docs/mcp-rag-design.md`.
+  gateway quota per key, per-request caps, a budget action that denies
+  Bedrock at 100% of a small monthly budget) -- see `docs/mcp-rag-design.md`.
 - `infra/` -- single Terraform root module (Lambda + REST API Gateway with
   API key + usage plan; Bedrock knowledge base + S3 Vectors index + corpus
   bucket + budget action for the RAG stack). `terraform destroy` = full

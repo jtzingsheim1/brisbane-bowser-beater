@@ -15,12 +15,12 @@ to. The analysis pipeline already *renders* both visuals this design wants
 canonical shape) but gitignores them as exploratory diagnostics. This design
 promotes polished versions to the public surfaces.
 
-**Audience decision (explicit, from Justin):** the website's real audience is
-Justin plus occasional recruiters/technical evaluators — *not* a mass consumer
-public, and many evaluators will only ever see the website, never the GitHub
-README. Cater to the actual audience: both visuals go on the **website**
+**Audience decision (explicit, from Justin):** the site is read by individual
+technical readers who want to see the evidence behind the forecast — *not* a
+mass consumer public — and many of them will only ever see the website, never
+the GitHub README. Cater to that: both visuals go on the **website**
 first-class; the README also gets them (cheap once generated), but the site is
-the primary surface. Corollary (from review): that audience often meets the
+the primary surface. Corollary (from review): such readers often meet the
 site as a **link unfurl** first — so the design includes an Open Graph image.
 
 ## The two visuals
@@ -53,7 +53,7 @@ The "concept lands immediately" chart: ~20 sawtooth cycles over three years.
 All fitted cycles phase-normalised (0 = trough → 1 = next trough), drawn
 faint; the canonical shape bold on top. This *is* the forecast model — "not a
 formula, just the averaged shape of observed cycles" — and it's the single
-best artifact for a technical evaluator judging the project's rigour.
+best artifact for a technical reader judging the project's rigour.
 
 - **The bold line is read directly from `cycle_params.json`'s committed
   `shape` array** — the *actual* recency-weighted template the forecast
@@ -92,7 +92,7 @@ Brisbane fuel cycle"; V2 in "How the forecast works".
 
 ### Open Graph / link previews (new, from review)
 
-`src/app/layout.tsx` currently has title + description only — recruiters see
+`src/app/layout.tsx` currently has title + description only — visitors see
 a bare text card when the link unfurls. The figure script emits one extra
 1200×630 render of V1 (site-palette, branded caption) wired as the
 `openGraph`/`twitter` image. Nearly free given the pipeline, high-leverage
@@ -105,7 +105,7 @@ invisible until clicked. That was right for quiet prose; it buries the
 visuals. **Both charts become always-visible** in a compact band under the
 main chart's disclosure rows: side-by-side on desktop, stacked on mobile.
 V1 proves the phenomenon; V2 proves the engineering — and the engineering is
-the portfolio pitch, so it doesn't go back behind a click (review finding 3;
+the strongest part of the story, so it doesn't go back behind a click (review finding 3;
 the original design kept V2 in the disclosure, contradicting its own audience
 argument). The trimmed prose + ACCC link stay inside the disclosure
 (retitled, e.g. "More on how the cycle works").

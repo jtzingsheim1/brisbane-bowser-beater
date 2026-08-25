@@ -43,10 +43,9 @@ https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp
 
 The URL is public because it is useless without a key: an unauthenticated
 call returns 403 at the gateway, before any Lambda runs. Keys are available
-on request; get in touch if you would like one. Two keys exist and are
-metered separately: one for general distribution and one kept private, so a
-distributed key running out of quota never affects the other, and either can
-be rotated without disturbing the other.
+on request; get in touch if you would like one. Each key is metered
+separately, so one key running out of quota never affects another, and any
+key can be rotated without disturbing the rest.
 
 Claude Code:
 
@@ -68,7 +67,8 @@ curl -s https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
 
 Worth knowing before you try it: `ask_docs` is the only tool that costs
 anything to run, and it is bounded by a monthly per-key quota plus an AWS
-budget action that denies Bedrock outright at 100% of a USD 5 budget. If the
+budget action that denies Bedrock outright when a small monthly budget is
+fully spent. If the
 docs tools ever return errors, that is most likely the backstop having fired,
 not an outage.
 
@@ -120,9 +120,8 @@ Supabase PostgREST              Bedrock Knowledge Base (bbb-mcp-docs)
 gateway usage plan throttles **each key** to 5 requests/second (burst 10)
 and caps **each key** at 500 requests per calendar month, so worst-case
 cost and abuse are bounded at the front door. Both limits are metered per
-key rather than across the plan, so they scale with key count: with the two
-keys that exist today that is 10 requests/second and 1000 requests a month
-in aggregate. The quota is deliberately small, since `ask_docs` can trigger
+key rather than across the plan, so the aggregate ceiling scales with the
+number of keys minted. The quota is deliberately small, since `ask_docs` can trigger
 paid generation (the client makes exactly one attempt per request, no SDK
 retries). AWS applies usage-plan quotas on a best-effort basis, so treat
 the number as a tight bound rather than an exact one; the budget action
@@ -197,9 +196,8 @@ approved.
 **Cost guards (AWS-enforced, layered).** `ask_docs` is the one path that
 can spend money, so spending is bounded in AWS itself, not only in code:
 
-1. The usage-plan **monthly quota (500 per key, so 1000 across the two
-   keys that exist)** is the front-door ceiling on how many paid calls
-   can be made at all.
+1. The usage-plan **monthly quota (500 per key)** is the front-door
+   ceiling on how many paid calls can be made at all.
 2. **Reserved concurrency** is deliberately not used as a cost guard
    (`lambda_reserved_concurrency` stays at -1). Considered and dropped
    2026-08-23: layer 1 caps the month by request count, and a given
@@ -210,8 +208,9 @@ can spend money, so spending is bounded in AWS itself, not only in code:
    attempt per request (no retries), at most 4 retrieved chunks on the
    generation path (8 for retrieval-only `search_docs`), 500 output
    tokens, temperature 0.
-4. A **budget action** (Terraform-managed, USD 5/month, actual costs,
-   account-wide) attaches a customer-managed `Deny bedrock:*` policy to
+4. A **budget action** (a small Terraform-managed monthly budget,
+   `budget_limit_usd`, on actual costs, account-wide) attaches a
+   customer-managed `Deny bedrock:*` policy to
    the server's execution role at 100% of budget -- automatic approval, no
    human in the loop, and its own permissions are pinned so it can only
    ever attach that one policy to that one role. Budgets cost data lags by
@@ -230,15 +229,19 @@ questions are length-bounded, and generation is capped as above. Generated
 answers are additionally checked against the project's language-discipline
 term list at runtime; an answer a caller has steered into prohibited
 framing is withheld rather than served from this endpoint. That runtime
-check is a backstop, not a guarantee. The list (in
-`mcp/src/banned-language.ts`) holds prefixes: some truncated stems, some
+check is a backstop, not a guarantee. The runtime list (`BANNED_LANGUAGE`
+in `mcp/src/banned-language.ts`) holds prefixes: some truncated stems, some
 whole words, some short phrases. Each is matched case-insensitively with a
 leading word boundary only. So a single-word entry also catches its
 inflections, plus the occasional unrelated word that happens to begin the
 same way; a multi-word entry matches only that exact sequence; and none of
 them catch a paraphrase that reaches the same framing with different
 words. The controls it backs up are the curated corpus and the prompt
-template, which is where the real work is done.
+template, which is where the real work is done. The same file holds a
+second, test-time-only list of reader-anchored terms, swept over every
+corpus doc so the docs keep describing what the project does rather than
+who is assumed to be reading; it is not part of the runtime answer check,
+since a caller's own question may legitimately echo those words.
 
 **Blast radius.** Full compromise of the API key lets someone read public
 data and ask documentation questions slightly faster than anonymous
