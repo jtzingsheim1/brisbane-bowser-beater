@@ -11,13 +11,13 @@
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agent-runtime": "^3.1116.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.1121.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.4.0",
     "esbuild": "^0.28.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
