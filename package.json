@@ -17,19 +17,19 @@
     "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs --force && next dev"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.45",
-    "@ai-sdk/react": "^4.0.87",
-    "@supabase/supabase-js": "^2.112.4",
+    "@ai-sdk/anthropic": "^4.0.49",
+    "@ai-sdk/react": "^4.0.96",
+    "@supabase/supabase-js": "^2.115.0",
     "@upstash/ratelimit": "^2.0.8",
-    "@upstash/redis": "^1.38.3",
+    "@upstash/redis": "^1.38.4",
     "ai": "^7.0.16",
-    "next": "16.3.3",
+    "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
-    "stripe": "^22.6.0",
+    "stripe": "^22.6.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -41,9 +41,9 @@
     "@vitest/coverage-v8": "^4.1.11",
     "csv-parse": "^7.0.2",
     "eslint": "^9",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^6",
     "vitest": "^4.1.10"
   }
