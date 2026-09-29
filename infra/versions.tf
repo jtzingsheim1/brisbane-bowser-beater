@@ -9,8 +9,8 @@ terraform {
   required_providers {
     aws = {
       # The RAG stack needs the S3 Vectors + Bedrock agent resources,
-      # available from 6.27 per the provider docs; the committed lockfile
-      # pins 6.60.0, which is the version actually verified against.
+      # available from 6.27 per the provider docs. The exact version in use
+      # is pinned in .terraform.lock.hcl, which Dependabot keeps current.
       source  = "hashicorp/aws"
       version = ">= 6.27.0, < 7.0.0"
     }

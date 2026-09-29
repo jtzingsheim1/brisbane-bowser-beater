@@ -118,8 +118,8 @@ security-posture doc.
 ## Terraform resources (all in the existing single root module)
 
 Provider constraint moves to `>= 6.27.0, < 7.0.0` (S3 Vectors and
-Bedrock agent resources; the committed lockfile is already at 6.60.0, so
-no lockfile change).
+Bedrock agent resources; the committed lockfile was already above that
+floor, so no lockfile change was needed).
 
 New resources in `infra/rag.tf`:
 
