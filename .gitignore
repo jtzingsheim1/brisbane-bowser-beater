@@ -52,8 +52,12 @@ Thumbs.db
 *.swp
 *.swo
 
-# Claude Code local state (settings, hooks, session config)
+# Claude Code local state (settings, hooks, session config). Shared project
+# skills are the exception: they are committed so every session loads them.
 .claude/
+!/.claude/
+/.claude/*
+!/.claude/skills/
 
 # Python (for /analysis Jupyter notebooks)
 __pycache__/
