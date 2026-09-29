@@ -1,4 +1,4 @@
-<!-- Keep it short. Delete anything that doesn't apply. -->
+<!-- Keep it short. Delete anything that doesn't apply. CI already runs lint, tests and the build. -->
 
 ## What & why
 
@@ -6,10 +6,9 @@
 
 ## Checklist
 
-- [ ] `npm run lint`, `npm test`, and `npm run build` pass locally
-- [ ] No secrets in the diff (keys/tokens stay in env vars only)
-- [ ] **Language discipline** — UI copy, comments, commit messages, and agent
-      prompts/outputs describe the price cycle in observation-only terms; no
-      wrongdoing framing, no retailer named negatively, no guaranteed savings
-- [ ] Any new Supabase table has explicit `grant`/`revoke` in its migration
-- [ ] `PLAN.md` updated if this changes project status
+<!-- Project rules CI can't check. Each is defined in the named CLAUDE.md section. -->
+
+- [ ] No secrets in the diff
+- [ ] Language discipline ("Legal hygiene")
+- [ ] Any new Supabase table has explicit grants ("Coding conventions")
+- [ ] `PLAN.md` updated if this changes project status ("Docs discipline")
