@@ -17,8 +17,24 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # One PR for the routine minor/patch churn; majors stay separate so
-      # breaking bumps get reviewed on their own.
+      # Majors of these pairs must land together: @vitest/coverage-v8 pins
+      # vitest exactly, and eslint-config-next is versioned with next. A
+      # dependency joins the first group whose rules it matches, so these
+      # come first; their minor and patch updates still go to minor-and-patch.
+      vitest-major:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - major
+      next-major:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+        update-types:
+          - major
+      # One PR for the routine minor/patch churn; other majors stay separate
+      # so breaking bumps get reviewed on their own.
       minor-and-patch:
         update-types:
           - minor

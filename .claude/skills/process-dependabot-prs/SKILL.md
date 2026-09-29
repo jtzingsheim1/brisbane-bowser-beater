@@ -49,10 +49,11 @@ unpushed work, stop and ask the user. Otherwise run
 - For grouped npm PRs, compare `package.json` at `refs/pull/<n>/head` with
   main rather than reading the lockfile diff.
 - Some packages move in lockstep: `vitest` with `@vitest/coverage-v8` (which
-  pins `vitest` exactly), and `next` with `eslint-config-next`. If Dependabot
-  splits a pair, open one PR that bumps both, close Dependabot's PRs with a link
-  to it, and merge it under the same rules once green. For the vitest pair,
-  also run `npm test -- --coverage` locally, since PR CI never runs coverage.
+  pins `vitest` exactly), and `next` with `eslint-config-next`.
+  `.github/dependabot.yml` groups their majors; if a pair still arrives split,
+  open one PR that bumps both, close Dependabot's PRs with a link to it, and
+  merge it under the same rules once green. For a vitest major, also run
+  `npm test -- --coverage` locally, since PR CI never runs coverage.
 - Terraform bumps must be lockfile-only and within the constraints in
   `infra/`. They take effect at the next approval-gated `mcp-deploy` run.
 - Actions: every `uses:` keeps its pinning style. SHA pins keep a full SHA
