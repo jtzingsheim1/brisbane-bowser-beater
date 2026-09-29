@@ -1,105 +1,97 @@
 ---
 name: dependabot-wednesday
-description: The weekly Dependabot review-and-merge drill for this repo ("Dependabot Wednesday"). Use when asked to review, merge or action open Dependabot PRs, run the weekly dependency drill, or when out-of-band Dependabot security PRs appear.
+description: Reviews this repository's open Dependabot PRs and merges the safe ones one at a time, updating each branch and waiting for CI, then verifies main, the production deploy and npm audit. Use when the user asks to review, merge or action Dependabot PRs, including scheduled batches and out-of-band security updates.
 ---
 
-# Dependabot Wednesday
+# Dependabot review and merge
 
-Justin's standing request: review every open PR, merge the ones you are
-confident in, and bring anything else to him **with a recommendation**.
-Monitor each step (CI, main, deploy) until it lands. Keep the final report
-short: a table of what merged, then only the decisions he needs to make.
+Merge only when the user has asked for merges (a scheduled run only if its
+prompt says to); a review-only request gets a report. Merge what you are
+confident in. Leave anything else open (a major, failing CI, a surprise in
+the diff) and report it with a recommendation. Keep the report short: what
+merged, then only the decisions needed.
 
-## Timing and shape
+Standing decisions about specific dependencies, such as a major that is
+blocked upstream, live under "Still parked" in `PLAN.md`: follow them instead
+of re-deriving them, and don't update, rebase or re-run CI on a PR parked
+there. Record a new maintainer decision there as a dated event.
 
-- The weekly scheduled run lands around 22:00 UTC Tuesday (Wednesday
-  morning in Brisbane): grouped `minor-and-patch` PRs for `/` and `/mcp`,
-  an `actions` group, Terraform providers in `/infra`, and majors as
-  separate PRs (see `.github/dependabot.yml`).
-- Single-package PRs for transitive dependencies at other times are
-  **security updates**. Map each one to its advisory with
-  `npm audit --package-lock-only` on main, in both `/` and `/mcp`.
+```
+- [ ] Sync with main
+- [ ] Triage every open PR
+- [ ] Merge the safe ones one at a time, security updates first
+- [ ] Verify main, the deploy and npm audit
+- [ ] Report
+```
 
-## Setup
+## Sync
 
-1. `git fetch origin main --prune`, then reset the session's designated
-   branch onto `origin/main`. The prune matters: a stale remote-tracking
-   ref for an already-merged feature branch makes the stop hook report
-   phantom "unpushed commits".
-2. List the open PRs and their CI in one pass. The GitHub REST API for this
-   repo is reachable with curl through the session proxy, e.g.
-   `https://api.github.com/repos/jtzingsheim1/brisbane-bowser-beater/pulls`.
+Run `git fetch --prune origin`. If the working tree has uncommitted or
+unpushed work, stop and ask the user. Otherwise run
+`git checkout --detach origin/main`, and repeat both steps before Verify.
 
-## Reviewing each PR
+## Triage
 
-- **npm groups:** compare `package.json` at `refs/pull/N/head` with main
-  rather than reading the whole lockfile diff. Watch for exact-pinned
-  packages (`next`, `react`, `react-dom`, `eslint-config-next`), and check
-  that `next` and `eslint-config-next` move together.
-- **Security PRs:** usually +3/-3 in one lockfile (version, resolved,
-  integrity). Classify the package as runtime or dev from the lockfile's
-  `dev` flag. For `/mcp`, check whether the package actually ends up in the
-  Lambda bundle: run `npm ci && npm run build` in `mcp/` and grep
-  `dist/index.mjs` for `node_modules/<pkg>/`. Validate the grep against a
-  package known to be bundled (`zod`) before trusting a zero.
-- **Terraform:** lock-file only, and within the constraint in `infra/`.
-  Provider bumps take effect only on the next human-approved
-  `mcp-deploy` run.
-- **Actions:** SHA-pinned with a version comment, and updated in lockstep
-  across every workflow that uses the action. `configure-aws-credentials`
-  is only exercised by `mcp-deploy.yml` and `corpus-sync.yml`, not by PR CI.
-- **Stale titles:** Dependabot sometimes refreshes a branch to a newer
-  release without retitling it. If the diff's version differs from the
-  title, pass a corrected `commit_title` when merging.
-- **Peer-pinned pairs:** `vitest` and `@vitest/coverage-v8` pin each other
-  exactly. When they arrive as separate majors, neither can merge alone
-  (`ERESOLVE` at `npm ci`), so supersede both with one paired PR, as #129
-  did. PR CI never runs `--coverage`, so check a coverage run locally.
+- A PR counts as Dependabot's only if its author is `dependabot[bot]`, its
+  branch lives in this repository, and every commit on it is by
+  `dependabot[bot]`, apart from merge commits from main made by "update
+  branch". Otherwise report it and leave it alone.
+- Groups and schedules are in `.github/dependabot.yml`. A single transitive
+  package arriving outside that schedule is usually a security update: map it
+  to its advisory with `npm audit --package-lock-only` at the repo root and
+  in `mcp/`.
+- For a security update, check whether the vulnerable package ships. In the
+  app, use the lockfile's `dev` flag. In `mcp/`, run `npm ci && npm run build`,
+  then grep `dist/index.mjs` for `node_modules/<pkg>/`; trust a zero only after
+  the same grep finds a package known to be bundled, such as `zod`. Shipping
+  never blocks a green merge, but it puts the PR first in the report. A shipped
+  `mcp/` fix only reaches the Lambda at the next `mcp-deploy` run, so say so.
+- For grouped npm PRs, compare `package.json` at `refs/pull/<n>/head` with
+  main rather than reading the lockfile diff.
+- Some packages move in lockstep: `vitest` with `@vitest/coverage-v8` (which
+  pins `vitest` exactly), and `next` with `eslint-config-next`. If Dependabot
+  splits a pair, open one PR that bumps both, close Dependabot's PRs with a link
+  to it, and merge it under the same rules once green. For the vitest pair,
+  also run `npm test -- --coverage` locally, since PR CI never runs coverage.
+- Terraform bumps must be lockfile-only and within the constraints in
+  `infra/`. They take effect at the next approval-gated `mcp-deploy` run.
+- Actions: every `uses:` keeps its pinning style. SHA pins keep a full SHA
+  with a `# vX.Y.Z` comment, identical across workflows. PR CI never runs
+  `configure-aws-credentials`; a bump to it first runs in `corpus-sync`
+  (unattended, on the next corpus-doc push to main) or `mcp-deploy`, so name
+  that in the report.
+- If a PR's diff shows a newer version than its title, merge with a corrected
+  commit title.
+- For UI-facing bumps (`react`, `next` and similar), check the PR's Vercel
+  preview before merging: the chart renders, not the paused or unavailable
+  page. If you can't load it, ask the user to check it.
 
-## Merging
+## Merge
 
-- Squash merges only (linear history), always with `expectedHeadSha`.
-- Merge serially. After each merge, update the next PR's branch, wait for
-  its CI, then merge. GitHub's "update branch" is safe when the PRs touch
-  different files, or disjoint leaf entries in the same lockfile, because
-  CI's `npm ci` fails loudly on any lockfile inconsistency. If manifests
-  or overlapping ranges are involved, comment `@dependabot rebase` instead,
-  so Dependabot regenerates the lockfile.
-- Never foreground-sleep. Run `scripts/wait-checks.sh <pr>` and
-  `scripts/wait-deploy.sh <sha>` in the background and act on the
-  completion notification.
+For each PR, in turn:
 
-## After the last merge
+1. Run `${CLAUDE_SKILL_DIR}/scripts/wait-checks.sh <pr>` in the background.
+   It prints ALL_GREEN, FAIL, BEHIND or CONFLICT with the head SHA, or
+   GitHub's error message.
+2. ALL_GREEN: squash-merge pinned to that `head=` SHA (`expectedHeadSha` with
+   the GitHub MCP merge tool, `--match-head-commit` with `gh pr merge`).
+   FAIL: leave it open and report it. BEHIND: update the branch and rerun.
+   CONFLICT: comment `@dependabot rebase`, then wait as in step 3 and rerun.
+3. Bring the next PR up to date. If the merge you just made touched the same
+   lockfile, comment `@dependabot rebase` so Dependabot regenerates it;
+   otherwise use GitHub's "update branch". A Dependabot rebase is
+   asynchronous: wait for the PR's head SHA to change before rerunning
+   `wait-checks.sh`, and if it hasn't changed within about 10 minutes, leave
+   the PR open and report it. If Dependabot refuses because the branch was
+   edited, comment `@dependabot recreate`.
 
-- Wait for main's CI and the Vercel production deployment
-  (`scripts/wait-deploy.sh <main sha>`), and re-run `npm audit` if the
-  batch contained security PRs.
-- `*.vercel.app` is blocked by the cloud egress proxy, so the live site
-  cannot be checked from a cloud session. There are no component tests,
-  so when `react`, `next` or UI-affecting packages change, ask Justin to
-  eyeball the site.
+## Verify
 
-## Standing decisions
+If anything merged: with main checked out fresh (see Sync), run
+`wait-checks.sh` and `${CLAUDE_SKILL_DIR}/scripts/wait-deploy.sh` on
+`$(git rev-parse origin/main)`, then `npm audit --package-lock-only` at the
+repo root and in `mcp/`.
 
-- **ESLint 10 is blocked upstream.** Majors from 10.10.0 on crash at lint
-  inside `eslint-plugin-react` (`context.getFilename()` was removed in
-  ESLint 10), which `eslint-config-next` pulls in. The fix is
-  jsx-eslint/eslint-plugin-react#4022; Justin is subscribed to it. Do not
-  re-trace the crash. Each week, check npm for an `eslint-plugin-react`
-  release whose eslint peer range includes `^10`.
-  - Decided 2026-09-22: leave the eslint-major PR open rather than closing
-    it, so Dependabot keeps it current and it goes green on its own once
-    the blocker clears.
-  - If a fixed plugin is released but the PR is still red, the lockfile is
-    probably still pinning the old plugin (`eslint-config-next` asks only
-    for `^7.37.0`). Supersede it with a PR that regenerates the lockfile.
-  - Decided 2026-09-22: no Dependabot `ignore` rule for eslint majors.
-    Justin wants the update to reach him when upstream ships.
-
-## House rules for anything you write
-
-- PR bodies follow `.github/pull_request_template.md`, carry no
-  claude.ai/code session links (Justin's preference), and never name a
-  model. A dependency bump needs no `PLAN.md` update.
-- The language discipline in CLAUDE.md applies to every commit message and
-  PR body.
+Both scripts take the repository from the `origin` remote (override with
+`REPO=owner/name`) and send `GH_TOKEN` or `GITHUB_TOKEN` when set. Anonymous
+GitHub API calls are limited to 60 an hour.
