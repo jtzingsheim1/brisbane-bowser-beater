@@ -1,5 +1,5 @@
 ---
-name: dependabot-wednesday
+name: process-dependabot-prs
 description: Reviews this repository's open Dependabot PRs and merges the safe ones one at a time, updating each branch and waiting for CI, then verifies main, the production deploy and npm audit. Use when the user asks to review, merge or action Dependabot PRs, including scheduled batches and out-of-band security updates.
 ---
 
