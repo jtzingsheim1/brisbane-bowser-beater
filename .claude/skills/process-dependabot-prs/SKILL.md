@@ -5,11 +5,11 @@ description: Reviews this repository's open Dependabot PRs and merges the safe o
 
 # Dependabot review and merge
 
-Merge only when the user has asked for merges (a scheduled run only if its
-prompt says to); a review-only request gets a report. Merge what you are
-confident in. Leave anything else open (a major, failing CI, a surprise in
-the diff) and report it with a recommendation. Keep the report short: what
-merged, then only the decisions needed.
+By default, merge the PRs you are confident in, on scheduled runs too. If
+the user asks only for a review (for example "just review" or "don't
+merge"), report instead. Leave anything else open (a major, failing CI, a
+surprise in the diff) and report it with a recommendation. Keep the report
+short: what merged, then only the decisions needed.
 
 Standing decisions about specific dependencies, such as a major that is
 blocked upstream, live under "Still parked" in `PLAN.md`: follow them instead
