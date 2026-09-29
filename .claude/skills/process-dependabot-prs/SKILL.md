@@ -63,9 +63,9 @@ unpushed work, stop and ask the user. Otherwise run
   that in the report.
 - If a PR's diff shows a newer version than its title, merge with a corrected
   commit title.
-- For UI-facing bumps (`react`, `next` and similar), check the PR's Vercel
-  preview before merging: the chart renders, not the paused or unavailable
-  page. If you can't load it, ask the user to check it.
+- Vercel previews can't verify UI-facing bumps: they show the paused page by
+  design, because the kill switch and the data keys are set for Production
+  only.
 
 ## Merge
 
