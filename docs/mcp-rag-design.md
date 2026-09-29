@@ -254,7 +254,7 @@ against a hostile caller driving up the bill. Layers, front to back:
    **Standby** in the console. Honesty note: Budgets cost data lags by
    hours, so layers 1..3 bound spending inside the lag window and this
    layer ends it afterwards. The existing bootstrap zero-spend alert
-   budget and the console alert-only budget Justin created on
+   budget and the console alert-only budget the maintainer created on
    2026-08-22 are left untouched (the zero-spend alert will now fire
    once real Bedrock spend begins; that is expected and can be retired
    by hand whenever it becomes noise).
@@ -333,7 +333,7 @@ permissions. See "Update for the permissions boundaries" in
   answer with citations, an unauthenticated call is still rejected at
   the gateway, and the budget action is in Standby.
 
-## Human-at-keyboard steps (Justin)
+## Human-at-keyboard steps (maintainer)
 
 1. CloudShell: run the updated deploy-role policy paste from
    `infra/BOOTSTRAP.md`.

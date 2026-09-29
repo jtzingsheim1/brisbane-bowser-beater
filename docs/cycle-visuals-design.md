@@ -15,7 +15,7 @@ to. The analysis pipeline already *renders* both visuals this design wants
 canonical shape) but gitignores them as exploratory diagnostics. This design
 promotes polished versions to the public surfaces.
 
-**Audience decision (explicit, from Justin):** the site is read by individual
+**Audience decision (explicit, from the maintainer):** the site is read by individual
 technical readers who want to see the evidence behind the forecast — *not* a
 mass consumer public — and many of them will only ever see the website, never
 the GitHub README. Cater to that: both visuals go on the **website**
@@ -148,7 +148,7 @@ animation.
 - **Environment constraint (verified):** this remote environment's network
   policy blocks `www.data.qld.gov.au`, so the CSV cache cannot be
   re-downloaded in-session. Either the domain is added to the environment's
-  network policy, or Justin runs `download_data.py` + the one-command refresh
+  network policy, or the maintainer runs `download_data.py` + the one-command refresh
   locally (as with the May 2026 data refresh) and commits the artifacts.
 
 ## Website changes
