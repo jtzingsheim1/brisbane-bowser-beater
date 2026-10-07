@@ -18,7 +18,7 @@ TARGET=$1
 source "$(dirname "$0")/github-api.sh"
 POLL_SECONDS="${POLL_SECONDS:-15}"
 SETTLE_SECONDS=45
-BEHIND_SECONDS=60       # "update branch" clears behind within seconds; see SKILL.md for rebases
+BEHIND_SECONDS=60       # "update branch" clears behind within seconds
 MAX_SECONDS=1200        # several times a normal CI run
 
 if [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]]; then PR=""; SHA=$TARGET
@@ -38,7 +38,7 @@ print(d["state"], d.get("merged", False), d["head"]["sha"], d.get("mergeable_sta
     if [ "$pstate" != "open" ]; then
       echo "PR #$PR is not open ($([ "$merged" = True ] && echo merged || echo closed))"; exit 2
     fi
-    if [ "$state" = "dirty" ]; then echo "PR #$PR head=$SHA CONFLICT: rebase needed"; exit 4; fi
+    if [ "$state" = "dirty" ]; then echo "PR #$PR head=$SHA CONFLICT: wait for Dependabot to rebase"; exit 4; fi
     if [ "$state" = "behind" ]; then
       behind_since=${behind_since:-$SECONDS}
       [ $((SECONDS - behind_since)) -ge "$BEHIND_SECONDS" ] && { echo "PR #$PR head=$SHA BEHIND: update its branch first"; exit 4; }
