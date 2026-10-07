@@ -76,15 +76,17 @@ For each PR, in turn:
    GitHub's error message.
 2. ALL_GREEN: squash-merge pinned to that `head=` SHA (`expectedHeadSha` with
    the GitHub MCP merge tool, `--match-head-commit` with `gh pr merge`).
-   FAIL: leave it open and report it. BEHIND: update the branch and rerun.
-   CONFLICT: comment `@dependabot rebase`, then wait as in step 3 and rerun.
-3. Bring the next PR up to date. If the merge you just made touched the same
-   lockfile, comment `@dependabot rebase` so Dependabot regenerates it;
-   otherwise use GitHub's "update branch". A Dependabot rebase is
-   asynchronous: wait for the PR's head SHA to change before rerunning
-   `wait-checks.sh`, and if it hasn't changed within about 10 minutes, leave
-   the PR open and report it. If Dependabot refuses because the branch was
-   edited, comment `@dependabot recreate`.
+   FAIL: leave it open and report it. BEHIND: update the branch as in step 3
+   and rerun. CONFLICT: Dependabot rebases conflicted PRs by itself; wait
+   for the head SHA to change and rerun, and if it hasn't changed within
+   about 10 minutes, leave the PR open and report it.
+3. Bring the next PR up to date with GitHub's "update branch", pinned to its
+   current head SHA. Dependabot sometimes rebases a PR by itself right after
+   a merge; if the pinned update is refused, re-read the head and retry.
+   Before merging, check that the PR's diff against main changes only the
+   packages it names: a textual lockfile merge that went wrong shows up there
+   or fails `npm ci` in CI. Don't post `@dependabot` commands; leave those to
+   the user.
 
 ## Verify
 
