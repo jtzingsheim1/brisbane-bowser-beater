@@ -72,6 +72,47 @@ fully spent. If the
 docs tools ever return errors, that is most likely the backstop having fired,
 not an outage.
 
+### Optional web research with Parallel
+
+BBB's docs tools search this repository's curated corpus. For external
+context, such as ACCC fuel-price monitoring reports, an MCP client can
+connect separately to [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+It provides `web_search` and `web_fetch`, free for light use without a
+Parallel account or API key. BBB's endpoint still needs its own key.
+
+With [Claude Code](https://code.claude.com/docs/en/mcp) installed, run this
+from the same directory where `bbb` was added. Use another name if
+`parallel-research` is already configured:
+
+```bash
+claude mcp add --transport http --scope local parallel-research https://search.parallel.ai/mcp \
+  --header "User-Agent: brisbane-bowser-beater/0.1 (MCP research example)"
+claude mcp get parallel-research
+```
+
+The local scope keeps this connection in the current project's private
+Claude Code configuration. In Claude Code, use `/mcp` to check that both
+servers are connected, then try:
+
+> Use BBB's get_cycle_model to explain its fitted Brisbane U91 cycle.
+> Use Parallel's web_search to find recent ACCC reports about Brisbane
+> petrol price cycles, then web_fetch to read the relevant report.
+> Cite the ACCC URL, publication date and reporting period. Keep BBB's
+> fitted estimates separate from ACCC observations, and describe price
+> movements without attributing motives to retailers. If either source
+> is unavailable, say so rather than filling in missing figures.
+
+This research runs in the client; it does not add web search to BBB's
+website or change the server's tools or docs corpus. Only send public
+research queries and URLs to Parallel. Treat fetched pages as reference
+material, and check dates, coverage and units before comparing sources.
+
+Remove the optional connection from the same directory with:
+
+```bash
+claude mcp remove --scope local parallel-research
+```
+
 ## Architecture
 
 ```
