@@ -88,29 +88,30 @@ export default async function PrivacyPage() {
         applies to their part.
       </p>
 
-{tips && (
+      {tips && (
         <>
-        <h2 className={h2Class}>Tips and what Stripe sees</h2>
-        <div className="mt-4 space-y-4 text-base leading-7">
-          <p>
-            Tips are paid on Stripe&rsquo;s hosted checkout, so your card details
-            never reach this site. Stripe asks for your name and email, and we
-            can see those in our Stripe account. This site&rsquo;s database
-            doesn&rsquo;t store them: it keeps only Stripe&rsquo;s reference
-            IDs, the amount, the currency, the status and the time of each
-            payment.{" "}
-            <a
-              href="https://stripe.com/privacy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={linkClass}
-            >
-              Stripe&rsquo;s privacy policy
-            </a>{" "}
-            applies to their part.
-          </p>
-          <TipTerms email={email} />
-        </div>
+          <h2 className={h2Class}>Tips and what Stripe sees</h2>
+          <div className="mt-4 space-y-4 text-base leading-7">
+            <p>
+              Tips are paid on Stripe&rsquo;s hosted checkout, so your card details
+              never reach this site. Stripe asks for your name and email, and we
+              can see those in our Stripe account. This site&rsquo;s database
+              doesn&rsquo;t store them: it keeps only Stripe&rsquo;s reference
+              IDs, the amount, the currency, the status and the time of each
+              payment.{" "}
+              <a
+                href="https://stripe.com/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={linkClass}
+              >
+                Stripe&rsquo;s privacy policy
+              </a>{" "}
+              applies to their part.
+            </p>
+            {/* The refund contact is in the Contact section below. */}
+            <TipTerms email={null} />
+          </div>
         </>
       )}
 
@@ -118,7 +119,7 @@ export default async function PrivacyPage() {
         <>
           <h2 className={h2Class}>Contact</h2>
           <p className="mt-4 text-base leading-7">
-            Questions about privacy or a tip:{" "}
+            Questions about privacy, or a refund for a tip made by mistake:{" "}
             <a href={`mailto:${email}`} className={linkClass}>
               {email}
             </a>

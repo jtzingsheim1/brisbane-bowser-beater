@@ -65,87 +65,100 @@ async function main() {
   const dry = process.argv.includes("--dry");
   const client = supabaseAdmin();
 
-  const params = getCycleParams();
-  const history = await loadHistory(client);
-  const result = projectForecast(params, history);
+  // Retention runs whatever happens to the forecast below (no forecast
+  // written, or a write that throws), because /privacy promises visitor
+  // hashes are deleted on schedule. Skipped only for --dry.
+  try {
+    const params = getCycleParams();
+    const history = await loadHistory(client);
+    const result = projectForecast(params, history);
 
-  if (!result) {
-    // Expected during the backfill→live gap: not enough varying history after
-    // dead-zone trimming. The daily live feed fills this in; exit clean.
+    if (!result) {
+      // Expected during the backfill→live gap: not enough varying history after
+      // dead-zone trimming. The daily live feed fills this in; exit clean.
+      console.log(
+        `No forecast written: only ${history.length} daily points and too little ` +
+          `varying data after dead-zone trimming. The live feed will accumulate it.`,
+      );
+      return;
+    }
+
     console.log(
-      `No forecast written: only ${history.length} daily points and too little ` +
-        `varying data after dead-zone trimming. The live feed will accumulate it.`,
+      `anchor ${result.anchorDay} | phase ${result.phaseAtAnchor} | ` +
+        `trough $${result.troughLevel} | swing $${result.swing}` +
+        (result.amplitudeClamped ? " (swing clamped)" : ""),
     );
-    return;
-  }
+    console.log(
+      `next trough: ${result.nextTroughDay ?? "—"} | ` +
+        `next peak: ${result.nextPeakDay ?? "—"} | ${result.rows.length} rows`,
+    );
 
-  console.log(
-    `anchor ${result.anchorDay} | phase ${result.phaseAtAnchor} | ` +
-      `trough $${result.troughLevel} | swing $${result.swing}` +
-      (result.amplitudeClamped ? " (swing clamped)" : ""),
-  );
-  console.log(
-    `next trough: ${result.nextTroughDay ?? "—"} | ` +
-      `next peak: ${result.nextPeakDay ?? "—"} | ${result.rows.length} rows`,
-  );
+    const latestObserved =
+      history[history.length - 1]?.avgPrice ?? result.rows[0].predictedPrice;
+    const narrative = buildNarrative(params, result, latestObserved);
+    console.log(`narrative: ${narrative}`);
 
-  const latestObserved =
-    history[history.length - 1]?.avgPrice ?? result.rows[0].predictedPrice;
-  const narrative = buildNarrative(params, result, latestObserved);
-  console.log(`narrative: ${narrative}`);
+    if (dry) {
+      console.log("\n--dry: not writing. Every 5th projected day:");
+      result.rows.forEach((r, i) => {
+        if (i % 5 === 0) {
+          console.log(
+            `  ${r.day}  $${r.predictedPrice.toFixed(3)}  ` +
+              `[${r.bandLow.toFixed(3)}, ${r.bandHigh.toFixed(3)}]`,
+          );
+        }
+      });
+      return;
+    }
 
-  if (dry) {
-    console.log("\n--dry: not writing. Every 5th projected day:");
-    result.rows.forEach((r, i) => {
-      if (i % 5 === 0) {
-        console.log(
-          `  ${r.day}  $${r.predictedPrice.toFixed(3)}  ` +
-            `[${r.bandLow.toFixed(3)}, ${r.bandHigh.toFixed(3)}]`,
-        );
-      }
-    });
-    return;
-  }
-
-  const generatedAt = new Date().toISOString();
-  const rows = result.rows.map((r) => ({
-    forecast_for_date: r.day,
-    fuel_name: FUEL_NAME,
-    region: REGION,
-    generated_at: generatedAt,
-    predicted_price: r.predictedPrice,
-    band_low: r.bandLow,
-    band_high: r.bandHigh,
-  }));
-
-  const { error } = await client.from("forecasts").insert(rows);
-  if (error) throw error;
-  console.log(`✓ Inserted ${rows.length} forecast rows (generated_at ${generatedAt})`);
-
-  const { error: narrativeErr } = await client.from("daily_narrative").upsert(
-    {
-      narrative_date: result.anchorDay,
+    const generatedAt = new Date().toISOString();
+    const rows = result.rows.map((r) => ({
+      forecast_for_date: r.day,
       fuel_name: FUEL_NAME,
       region: REGION,
-      narrative_text: narrative,
       generated_at: generatedAt,
-    },
-    { onConflict: "narrative_date,fuel_name,region" },
-  );
-  if (narrativeErr) throw narrativeErr;
-  console.log(`✓ Upserted daily_narrative for ${result.anchorDay}`);
+      predicted_price: r.predictedPrice,
+      band_low: r.bandLow,
+      band_high: r.bandHigh,
+    }));
 
-  // Retention (src/lib/retention.ts). This is the job the GitHub Actions
-  // schedule actually runs, so it's where the janitor belongs. Best-effort:
-  // a prune failure is reported but never fails the run that just wrote a
-  // good forecast.
+    const { error } = await client.from("forecasts").insert(rows);
+    if (error) throw error;
+    console.log(`✓ Inserted ${rows.length} forecast rows (generated_at ${generatedAt})`);
+
+    const { error: narrativeErr } = await client.from("daily_narrative").upsert(
+      {
+        narrative_date: result.anchorDay,
+        fuel_name: FUEL_NAME,
+        region: REGION,
+        narrative_text: narrative,
+        generated_at: generatedAt,
+      },
+      { onConflict: "narrative_date,fuel_name,region" },
+    );
+    if (narrativeErr) throw narrativeErr;
+    console.log(`✓ Upserted daily_narrative for ${result.anchorDay}`);
+  } finally {
+    if (!dry) await runRetention(client);
+  }
+}
+
+// Retention (src/lib/retention.ts). This is the job the GitHub Actions
+// schedule actually runs, so it's where the janitor belongs. A failed
+// forecasts/agent_plans prune is only reported, but a failed visitor-hash
+// prune fails the run: deleting those on schedule is a published privacy
+// promise, so it must not fail silently.
+async function runRetention(client: ReturnType<typeof supabaseAdmin>) {
   const pruned = await pruneOldRows(client);
   if (pruned.errors.length > 0) {
     console.warn(`⚠ Retention prune had errors: ${pruned.errors.join("; ")}`);
+    if (pruned.errors.some((e) => e.startsWith("usage_monthly_visitors:"))) {
+      process.exitCode = 1;
+    }
   } else {
     console.log(
-      `✓ Pruned forecasts before ${pruned.forecastsCutoff.slice(0, 10)} ` +
-        `, agent_plans before ${pruned.agentPlansCutoff} ` +
+      `✓ Pruned forecasts before ${pruned.forecastsCutoff.slice(0, 10)}, ` +
+        `agent_plans before ${pruned.agentPlansCutoff} ` +
         `and usage_monthly_visitors before ${pruned.usageCutoff}`,
     );
   }

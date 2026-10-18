@@ -19,7 +19,14 @@ describe("supportEmail", () => {
   });
 
   it("rejects values that aren't a plain address", () => {
-    for (const bad of ["help", "help@example", "a b@example.com", "<x@y.z>"]) {
+    for (const bad of [
+      "help",
+      "help@example",
+      "a b@example.com",
+      "<x@y.z>",
+      "help@example.com?subject=Hi&body=x",
+      "help@example.com#x",
+    ]) {
       vi.stubEnv("SUPPORT_EMAIL", bad);
       expect(supportEmail()).toBeNull();
     }

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The checkout session's parameters carry terms decisions (see the comments
 // in route.ts), so pin them: the button must not say "Donate", only cards may
-// be offered, and nothing may make Stripe email the tipper.
+// be offered, and nothing in the session params may make Stripe email the
+// tipper (account-level receipt emails are a Dashboard setting; see
+// docs/deploy-runbook.md).
 
 const create = vi.fn(async () => ({ url: "https://checkout.stripe.test/s" }));
 
@@ -44,7 +46,11 @@ describe("POST /api/tip/checkout", () => {
 
     expect(create).toHaveBeenCalledTimes(1);
     const params = create.mock.calls[0][0] as Record<string, unknown>;
+    expect(params.mode).toBe("payment");
     expect(params.submit_type).toBe("pay");
+    expect(params.managed_payments).toEqual({ enabled: false });
+    expect(params.success_url).toBe("https://bbb.test/tip/thanks");
+    expect(params.cancel_url).toBe("https://bbb.test/");
     expect(params.allowed_payment_method_types).toEqual(["card"]);
     expect(params).not.toHaveProperty("payment_method_types");
     expect(params).not.toHaveProperty("receipt_email");

@@ -74,8 +74,8 @@ export default function TipJar({
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
         If this site has saved you a few bucks at the bowser, you can shout the
         developer some fuel back. Payments run through Stripe&rsquo;s hosted
-        checkout &mdash; your card details and identity stay with Stripe, and
-        our books hold nothing but an anonymous receipt ID.
+        checkout, so your card details never reach this site. We can see your
+        name and email in Stripe; this site doesn&rsquo;t store them.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {TIP_TIERS.map((tier) => (

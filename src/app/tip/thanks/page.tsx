@@ -9,8 +9,9 @@ export const metadata: Metadata = {
 
 // Static landing page after a completed Stripe Checkout. Deliberately knows
 // nothing about the payment — no session lookup, no amount, no name — so the
-// zero-tipper-PII posture holds even here. Stripe receipt emails are off, so
-// the copy deliberately promises no receipt.
+// zero-tipper-PII posture holds even here. Stripe's receipt emails are
+// switched off in the Dashboard (docs/deploy-runbook.md), so the copy
+// deliberately promises no receipt.
 
 export default function TipThanksPage() {
   // Gated like the checkout route: while the tip jar is flagged off, this page

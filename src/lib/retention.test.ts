@@ -63,10 +63,15 @@ describe("pruneOldRows", () => {
 
   it("keeps the current month and the twelve before it of visitor hashes", async () => {
     expect(USAGE_RETENTION_MONTHS).toBe(13);
-    const { client } = fakeClient();
     // NOW is 2026-08-23: keep 2025-08 through 2026-08, drop 2025-07 and older.
+    const { client, calls } = fakeClient();
     const { usageCutoff } = await pruneOldRows(client, NOW);
     expect(usageCutoff).toBe("2025-08-01");
+    expect(calls[2]).toEqual({
+      table: "usage_monthly_visitors",
+      column: "period_month",
+      value: "2025-08-01",
+    });
     // Crosses a year boundary cleanly from January.
     const jan = await pruneOldRows(
       fakeClient().client,
