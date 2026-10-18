@@ -107,12 +107,12 @@ Six bullets, plain language, lightly cheeky. Positioned so users see it *before*
 
 - No account, no login. Nothing here is tied to who you are.
 - We don't store your conversation. It goes to Anthropic to generate your plan, then it's gone on our side. (Anthropic's terms apply to their bit.)
-- No tracking, no analytics, no cookies that follow you around.
+- No third-party analytics and no cookies that follow you around. We count monthly visitors with a salted hash of your IP address, because our data licence asks for usage numbers.
 - Caching is anonymous. Same situation gets the same plan — we hash the inputs, we don't keep them.
 - Only the planner is AI. The forecast chart is deterministic.
 - It's all on GitHub. Don't trust this list? Read the code.
 
-IP handling is deliberately not mentioned (server-side IPs are a normal infra concern, not this pane's job — including them would draw attention to something users wouldn't otherwise think about).
+The visitor-count bullet was added 2026-10-18 after a terms review found "no tracking, no analytics" overstated the cl 4.8 usage counting. Other IP handling (short-lived rate-limit counters) is left to the `/privacy` page, linked from the footer.
 
 ### Agent tools
 
@@ -304,7 +304,7 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 | 1.4 — fee | $1 on demand | Symbolic. Pay if asked. |
 | 1.5 — termination | Either side, 20 business days notice (3 days if our publication is "not current or accurate") | The operational off-switch (see "Operational hygiene") gives us a clean wind-down path |
 
-**Privacy/trust pane reconciliation**: the "no analytics, no tracking, no cookies that follow you around" claim stays literally true under server-side aggregate counts (no cookies, no client JS, no per-user identity). If we ever want extra trust currency we can update one bullet to acknowledge the aggregate counts transparently — see PLAN.md Phase 3.
+**Privacy/trust pane reconciliation**: the pane's visitor-count bullet and the `/privacy` page state the cl 4.8 counting openly (a salted IP hash per visitor per month, pruned after 13 months by `src/lib/retention.ts`). No cookies, no client JS, no third-party analytics.
 
 ---
 

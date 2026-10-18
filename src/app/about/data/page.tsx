@@ -61,6 +61,10 @@ export default function AboutDataPage() {
           show per-station prices on this site.
         </p>
         <p>
+          Live fuel price data on this site is licensed from the State of
+          Queensland and may not be republished.
+        </p>
+        <p>
           This is an independent tool. It is not affiliated with or endorsed by
           the Queensland Government, the ACCC, or any fuel retailer &mdash; we
           simply build on the open and published data they make available.
@@ -100,7 +104,8 @@ export default function AboutDataPage() {
 
       <blockquote className="mt-4 border-l-4 border-zinc-300 pl-4 text-base leading-7 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
         Historical price data: &ldquo;Fuel Price Reporting 2026&rdquo; by the
-        State of Queensland (Department of Energy and Climate), used under{" "}
+        State of Queensland (Queensland Treasury), aggregated by Brisbane Bowser
+        Beater, used under{" "}
         <a
           href="https://creativecommons.org/licenses/by/4.0/"
           target="_blank"

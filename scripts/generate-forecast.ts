@@ -145,7 +145,8 @@ async function main() {
   } else {
     console.log(
       `✓ Pruned forecasts before ${pruned.forecastsCutoff.slice(0, 10)} ` +
-        `and agent_plans before ${pruned.agentPlansCutoff}`,
+        `, agent_plans before ${pruned.agentPlansCutoff} ` +
+        `and usage_monthly_visitors before ${pruned.usageCutoff}`,
     );
   }
 }

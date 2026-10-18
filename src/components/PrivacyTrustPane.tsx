@@ -10,7 +10,11 @@ export default function PrivacyTrustPane() {
           generate your plan, then it&rsquo;s gone on our side.
           (Anthropic&rsquo;s terms apply to their bit.)
         </li>
-        <li>No tracking, no analytics, no cookies that follow you around.</li>
+        <li>
+          No third-party analytics and no cookies that follow you around. We
+          count monthly visitors with a salted hash of your IP address, because
+          our data licence asks for usage numbers.
+        </li>
         <li>
           Caching is anonymous. Same situation gets the same plan &mdash; we
           hash the inputs, we don&rsquo;t keep them.

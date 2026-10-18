@@ -73,6 +73,20 @@ function mockSupabase() {
   });
 }
 
+
+// History and forecast include live-API prices, so they must carry the
+// publisher licence's cl 4.3 notice (with the current year) and its cl 2.3
+// no-republication term, and must not offer them under CC BY.
+function expectLicensedAttribution(attribution: string) {
+  expect(attribution).toContain("may not be republished");
+  expect(attribution).toContain(
+    "Based on or contains data provided by the State of Queensland " +
+      `(Department of Energy and Climate) ${new Date().getFullYear()}.`,
+  );
+  expect(attribution).toContain("used in breach of the privacy laws.");
+  expect(attribution).not.toContain("CC BY");
+}
+
 describe("handler", () => {
   beforeEach(() => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
@@ -169,7 +183,11 @@ describe("handler", () => {
     expect(payload.params.period_days).toBeGreaterThan(30);
     expect(payload.source.n_cycles_used).toBeGreaterThan(0);
     expect(payload.shape).toBeUndefined();
+    // Fitted from the open-data CSVs only: CC BY attribution, no licence
+    // no-republication term.
     expect(payload.attribution).toContain("CC BY 4.0");
+    expect(payload.attribution).toContain("Queensland Treasury");
+    expect(payload.attribution).not.toContain("may not be republished");
   });
 
   it("includes the canonical shape when asked", async () => {
@@ -199,6 +217,7 @@ describe("handler", () => {
     // Window anchored to the mocked latest event (2026-08-07), not today.
     expect(body.end_date).toBe("2026-08-07");
     expect(body.start_date).toBe("2026-07-08");
+    expectLicensedAttribution(payload.attribution);
   });
 
   it("returns the latest forecast batch", async () => {
@@ -214,6 +233,7 @@ describe("handler", () => {
         band_high: 1.78,
       },
     ]);
+    expectLicensedAttribution(payload.attribution);
   });
 
   it("reports unavailable when no forecast batch exists", async () => {
@@ -230,6 +250,7 @@ describe("handler", () => {
     const result = await callTool("get_forecast");
     const payload = JSON.parse(result.content[0].text);
     expect(payload.status).toBe("unavailable");
+    expectLicensedAttribution(payload.attribution);
   });
 
   it("degrades to a tool error when the data source is down", async () => {

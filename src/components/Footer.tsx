@@ -16,6 +16,12 @@ export default function Footer() {
             Where this data comes from
           </a>
           <a
+            href="/privacy"
+            className="underline hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            Privacy
+          </a>
+          <a
             href="https://github.com/jtzingsheim1/brisbane-bowser-beater"
             target="_blank"
             rel="noopener noreferrer"

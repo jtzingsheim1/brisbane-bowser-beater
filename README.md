@@ -26,8 +26,9 @@ explaining:
 
 ![Line chart of the Brisbane average U91 price, April 2023 to June 2026, showing about twenty recurring sawtooth price cycles. One unusual stretch in early 2026 is shaded and labelled as excluded from cycle fitting.](docs/images/cycle-history.png)
 
-*Data: QLD Fuel Price Reporting, [data.qld.gov.au](https://www.data.qld.gov.au)
-(CC BY 4.0).*
+*Data: "Fuel Price Reporting" by the State of Queensland (Queensland Treasury),
+[data.qld.gov.au](https://www.data.qld.gov.au) (CC BY 4.0), aggregated by
+Brisbane Bowser Beater.*
 
 This app focuses on **Brisbane Metro U91**. From that same ~3 years of
 Queensland open-data price reporting, the current Brisbane cycle is observed
@@ -211,19 +212,23 @@ The app is built to be cheap to run and safe to leave unattended:
 
 ### Privacy
 
-No accounts, no login, no cookies that follow you around, no client-side
-analytics. The planner conversation goes to Anthropic to generate your plan and
+No accounts, no login, no cookies that follow you around, no third-party or
+client-side analytics. Because the data licence asks for monthly usage
+numbers, the server counts visitors with a salted hash of the IP address (never
+the address itself), kept for 13 months. The site's `/privacy` page has the
+details. The planner conversation goes to Anthropic to generate your plan and
 isn't stored on our side; repeatable results are cached against a **hash** of
 the inputs, not the inputs themselves. It's all open source — read the code.
 
 **Tips ("Shout me a litre"):** payments run through Stripe-hosted Checkout, so
-card details never touch this site. Deliberately, **no donor PII ever enters
-our database** — donor identity's system of record is Stripe (that's their
-regulated job). Our reconciliation ledger records only opaque Stripe IDs
+card details never touch this site. Deliberately, **no tipper PII ever enters
+our database** — tipper identity's system of record is Stripe (that's their
+regulated job; the maintainer can see a tipper's name and email there). Our reconciliation ledger records only opaque Stripe IDs
 (event, checkout session, payment intent), the amount, currency, status, and
 timestamps, each row backed by a signature-verified webhook event. The ledger
 has no public read access. The practical upshot: a breach of our database
-would expose no donor identities, because they were never here.
+would expose no tipper identities, because they were never here. Tips are a
+voluntary thank-you for the free content, not donations.
 
 ## Local development
 
@@ -261,6 +266,7 @@ Deliberately out of MVP scope, tracked for later:
 
 General information only; fuel prices and forecasts are estimates — verify
 before you fill. Data © the State of Queensland (Fuel Price Reporting);
-historical CSVs licensed CC BY 4.0. This project is an independent tool and is
+live price data is licensed and may not be republished; historical CSVs
+licensed CC BY 4.0. This project is an independent tool and is
 not affiliated with or endorsed by the Queensland Government, the ACCC, or any
 fuel retailer.

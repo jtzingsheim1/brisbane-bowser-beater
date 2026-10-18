@@ -26,11 +26,56 @@ import {
 export const SERVER_NAME = "brisbane-bowser-beater";
 export const SERVER_VERSION = "0.2.0";
 
-const ATTRIBUTION =
-  "Data: QLD Fuel Price Reporting, data.qld.gov.au (CC BY 4.0). " +
-  "Derived aggregates by Brisbane Bowser Beater " +
-  "(https://brisbane-bowser-beater.vercel.app/about/data). " +
+// Attribution depends on where a tool's data comes from (see the site's
+// /about/data page, which carries the same notices).
+//
+// get_forecast and get_recent_history serve aggregates that include prices
+// from the licensed QLD Fuel Price Reporting API (the history RPC reads every
+// price_snapshots row, open-data backfill and live API alike, and the
+// forecast is projected from those aggregates). The publisher licence
+// (Fuel Price Data Licence, cl 2.3) lets a publisher publish them only if it
+// prohibits further publication, and cl 4.3 requires its derived-product
+// notice verbatim. Keep LICENCE_NOTICE word for word.
+//
+// get_cycle_model is fitted from the CC BY 4.0 open-data CSVs only, and the
+// docs tools serve this project's own documentation, so those carry the
+// open-data attribution instead.
+function licenceNotice(year: number): string {
+  return (
+    "Based on or contains data provided by the State of Queensland " +
+    `(Department of Energy and Climate) ${year}. In consideration of the ` +
+    "State permitting use of this data you acknowledge and agree that the " +
+    "State gives no warranty in relation to the data (including accuracy, " +
+    "reliability, completeness, currency or suitability) and accepts no " +
+    "liability (including without limitation, liability in negligence) for " +
+    "any loss, damage or costs (including consequential damage) relating to " +
+    "any use of the data. Data must not be used for direct marketing or be " +
+    "used in breach of the privacy laws."
+  );
+}
+
+const GENERAL_INFO =
   "General information only; prices and forecasts are estimates.";
+
+// Built per call so the notice carries the current year, matching the site.
+export function licensedDataAttribution(year = new Date().getFullYear()): string {
+  return (
+    "Contains live fuel price data licensed from the State of Queensland " +
+    "(QLD Fuel Price Reporting), aggregated by Brisbane Bowser Beater " +
+    "(https://brisbane-bowser-beater.vercel.app/about/data). This data and " +
+    "anything derived from it may not be republished. " +
+    licenceNotice(year) +
+    " " +
+    GENERAL_INFO
+  );
+}
+
+export const OPEN_DATA_ATTRIBUTION =
+  'Data: "Fuel Price Reporting" by the State of Queensland (Queensland ' +
+  "Treasury), data.qld.gov.au, CC BY 4.0; aggregated and modelled by " +
+  "Brisbane Bowser Beater " +
+  "(https://brisbane-bowser-beater.vercel.app/about/data). " +
+  GENERAL_INFO;
 
 const INSTRUCTIONS =
   "Read-only data about Brisbane's recurring retail fuel price cycle, from " +
@@ -95,14 +140,14 @@ export function buildServer(): McpServer {
             status: "unavailable",
             message: "No forecast batch is available yet.",
             series: [],
-            attribution: ATTRIBUTION,
+            attribution: licensedDataAttribution(),
           });
         }
         return jsonResult({
           status: "available",
           unit: "AUD per litre",
           series,
-          attribution: ATTRIBUTION,
+          attribution: licensedDataAttribution(),
         });
       } catch {
         return errorResult(
@@ -139,7 +184,7 @@ export function buildServer(): McpServer {
           days_returned: series.length,
           unit: "AUD per litre",
           series,
-          attribution: ATTRIBUTION,
+          attribution: licensedDataAttribution(),
         });
       } catch {
         return errorResult(
@@ -174,7 +219,7 @@ export function buildServer(): McpServer {
     async ({ include_shape }) => {
       return jsonResult({
         ...getCycleModel(include_shape),
-        attribution: ATTRIBUTION,
+        attribution: OPEN_DATA_ATTRIBUTION,
       });
     },
   );
@@ -225,7 +270,7 @@ function registerRagTools(server: McpServer, config: RagConfig): void {
         return jsonResult({
           results_returned: results.length,
           results,
-          attribution: ATTRIBUTION,
+          attribution: OPEN_DATA_ATTRIBUTION,
         });
       } catch (err) {
         // The caller gets a generic message; the real cause stays in
@@ -270,7 +315,7 @@ function registerRagTools(server: McpServer, config: RagConfig): void {
               "question.",
           );
         }
-        return jsonResult({ answer, citations, attribution: ATTRIBUTION });
+        return jsonResult({ answer, citations, attribution: OPEN_DATA_ATTRIBUTION });
       } catch (err) {
         // The caller gets a generic message; the real cause stays in
         // CloudWatch so operators can diagnose it.

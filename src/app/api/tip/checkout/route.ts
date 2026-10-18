@@ -80,7 +80,16 @@ export async function POST(req: Request) {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      submit_type: "donate",
+      // "pay", not "donate": a tip is a voluntary thank-you for free content,
+      // and Stripe can't support Australian donations that aren't linked to
+      // a good or service. This is the checkout button's label.
+      submit_type: "pay",
+      // Cards only (Apple Pay and Google Pay run on the card type). This
+      // filters the Dashboard's dynamic payment methods, so a Dashboard change
+      // can never offer bank debits, whose mandate emails would carry the
+      // account's contact details; it also leaves out Link. No receipt_email
+      // and no invoice_creation, for the same reason.
+      allowed_payment_method_types: ["card"],
       // Managed Payments (Stripe as merchant of record) is on by default for
       // newer accounts and rejects inline price_data without a product
       // tax_code. A tip has no meaningful tax code, and BBB stays the
@@ -92,7 +101,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: TIP_CURRENCY,
             unit_amount: amountCents,
-            product_data: { name: "Support Brisbane Bowser Beater" },
+            product_data: { name: "Tip for Brisbane Bowser Beater" },
           },
         },
       ],
