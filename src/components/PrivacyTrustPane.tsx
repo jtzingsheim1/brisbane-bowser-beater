@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Disclosure from "./Disclosure";
 
 export default function PrivacyTrustPane() {
@@ -33,6 +34,16 @@ export default function PrivacyTrustPane() {
           </a>
         </li>
       </ul>
+      <p className="mt-2">
+        Full details, including retention periods, on the{" "}
+        <Link
+          href="/privacy"
+          className="font-medium text-zinc-700 underline dark:text-zinc-300"
+        >
+          privacy page
+        </Link>
+        .
+      </p>
     </Disclosure>
   );
 }
