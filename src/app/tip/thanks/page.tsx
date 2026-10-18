@@ -9,7 +9,9 @@ export const metadata: Metadata = {
 
 // Static landing page after a completed Stripe Checkout. Deliberately knows
 // nothing about the payment — no session lookup, no amount, no name — so the
-// zero-donor-PII posture holds even here. Stripe handles the receipt.
+// zero-tipper-PII posture holds even here. Stripe's receipt emails are
+// switched off in the Dashboard (docs/deploy-runbook.md), so the copy
+// deliberately promises no receipt.
 
 export default function TipThanksPage() {
   // Gated like the checkout route: while the tip jar is flagged off, this page
@@ -24,9 +26,9 @@ export default function TipThanksPage() {
         Legend. Thanks for the shout. ⛽
       </h1>
       <p className="mt-3 max-w-prose text-base text-zinc-600 dark:text-zinc-400">
-        Your support keeps this site on the road. Stripe handles your receipt
-        &mdash; true to form, we never see your details, and our ledger keeps
-        only an anonymous record of the payment.
+        Your support keeps this site on the road. Stripe handles your card. We
+        can see your name and email in Stripe; this site doesn&rsquo;t store
+        them, and our ledger keeps only an anonymous record of the payment.
       </p>
       <p className="mt-6">
         <Link

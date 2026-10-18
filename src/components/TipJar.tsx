@@ -6,6 +6,7 @@ import {
   MIN_TIP_CENTS,
   TIP_TIERS,
 } from "@/lib/tips/config";
+import TipTerms from "./TipTerms";
 
 // "Shout me a litre" — a quiet support panel. Picking an amount POSTs to
 // /api/tip/checkout and redirects the browser to Stripe-hosted Checkout, so
@@ -16,7 +17,13 @@ import {
 const MIN_DOLLARS = MIN_TIP_CENTS / 100;
 const MAX_DOLLARS = MAX_TIP_CENTS / 100;
 
-export default function TipJar() {
+// supportEmail comes from the server (src/lib/support.ts); null hides the
+// refund contact.
+export default function TipJar({
+  supportEmail,
+}: {
+  supportEmail: string | null;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [custom, setCustom] = useState("");
@@ -67,8 +74,8 @@ export default function TipJar() {
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
         If this site has saved you a few bucks at the bowser, you can shout the
         developer some fuel back. Payments run through Stripe&rsquo;s hosted
-        checkout &mdash; your card details and identity stay with Stripe, and
-        our books hold nothing but an anonymous receipt ID.
+        checkout, so your card details never reach this site. We can see your
+        name and email in Stripe; this site doesn&rsquo;t store them.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {TIP_TIERS.map((tier) => (
@@ -115,6 +122,10 @@ export default function TipJar() {
       {error && (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
       )}
+      <TipTerms
+        email={supportEmail}
+        className="mt-3 text-xs text-zinc-500 dark:text-zinc-400"
+      />
     </div>
   );
 }

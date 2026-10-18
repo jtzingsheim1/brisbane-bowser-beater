@@ -4,6 +4,7 @@ import {
   AGENT_PLAN_RETENTION_DAYS,
   FORECAST_RETENTION_DAYS,
   pruneOldRows,
+  USAGE_RETENTION_MONTHS,
 } from "./retention";
 
 type Call = { table: string; column: string; value: string };
@@ -36,7 +37,7 @@ describe("pruneOldRows", () => {
     const { client, calls } = fakeClient();
     const result = await pruneOldRows(client, NOW);
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(calls[0]).toMatchObject({
       table: "forecasts",
       column: "generated_at",
@@ -44,6 +45,10 @@ describe("pruneOldRows", () => {
     expect(calls[1]).toMatchObject({
       table: "agent_plans",
       column: "plan_date",
+    });
+    expect(calls[2]).toMatchObject({
+      table: "usage_monthly_visitors",
+      column: "period_month",
     });
 
     // Cutoffs land exactly one retention window back, never in the future.
@@ -54,6 +59,25 @@ describe("pruneOldRows", () => {
       (NOW.getTime() - Date.parse(`${result.agentPlansCutoff}T00:00:00Z`)) /
       86_400_000;
     expect(planAgeDays).toBe(AGENT_PLAN_RETENTION_DAYS);
+  });
+
+  it("keeps the current month and the twelve before it of visitor hashes", async () => {
+    expect(USAGE_RETENTION_MONTHS).toBe(13);
+    // NOW is 2026-08-23: keep 2025-08 through 2026-08, drop 2025-07 and older.
+    const { client, calls } = fakeClient();
+    const { usageCutoff } = await pruneOldRows(client, NOW);
+    expect(usageCutoff).toBe("2025-08-01");
+    expect(calls[2]).toEqual({
+      table: "usage_monthly_visitors",
+      column: "period_month",
+      value: "2025-08-01",
+    });
+    // Crosses a year boundary cleanly from January.
+    const jan = await pruneOldRows(
+      fakeClient().client,
+      new Date("2027-01-05T00:00:00.000Z"),
+    );
+    expect(jan.usageCutoff).toBe("2026-01-01");
   });
 
   it("compares agent_plans on a bare date, not a timestamp", async () => {
@@ -69,21 +93,26 @@ describe("pruneOldRows", () => {
     expect(NOW.toISOString() > forecastsCutoff).toBe(true);
   });
 
-  it("collects errors instead of throwing, and still tries both tables", async () => {
+  it("collects errors instead of throwing, and still tries every table", async () => {
     const { client, calls } = fakeClient({
       forecasts: { message: "permission denied" },
     });
     const result = await pruneOldRows(client, NOW);
-    expect(calls).toHaveLength(2); // agent_plans still attempted
+    expect(calls).toHaveLength(3); // the other tables are still attempted
     expect(result.errors).toEqual(["forecasts: permission denied"]);
   });
 
-  it("reports errors from both tables", async () => {
+  it("reports errors from every table", async () => {
     const { client } = fakeClient({
       forecasts: { message: "boom" },
       agent_plans: { message: "bang" },
+      usage_monthly_visitors: { message: "crash" },
     });
     const result = await pruneOldRows(client, NOW);
-    expect(result.errors).toEqual(["forecasts: boom", "agent_plans: bang"]);
+    expect(result.errors).toEqual([
+      "forecasts: boom",
+      "agent_plans: bang",
+      "usage_monthly_visitors: crash",
+    ]);
   });
 });

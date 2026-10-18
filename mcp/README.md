@@ -24,7 +24,8 @@ single Terraform stack in [`infra/`](../infra/).
 
 All prices are Brisbane-area daily average U91 in AUD per litre. There is no
 per-station data, matching the site itself. Forecasts are estimates, never
-guarantees; every response carries the QLD data attribution.
+guarantees; every response carries the QLD data attribution that applies to
+its source (see "Data and attribution" below).
 
 The docs corpus is a curated allowlist (`mcp/corpus-manifest.txt`) of this
 repository's public documentation, synced to a private bucket when a doc
@@ -43,7 +44,9 @@ https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp
 
 The URL is public because it is useless without a key: an unauthenticated
 call returns 403 at the gateway, before any Lambda runs. Keys are available
-on request; get in touch if you would like one. Each key is metered
+on request; get in touch if you would like one. A key is issued on the
+condition that the live-price data it returns is not republished (see "Data
+and attribution" below). Each key is metered
 separately, so one key running out of quota never affects another, and any
 key can be rotated without disturbing the rest.
 
@@ -280,8 +283,18 @@ terraform init -backend=false && terraform validate
 
 ## Data and attribution
 
-Data: QLD Fuel Price Reporting, [data.qld.gov.au](https://www.data.qld.gov.au)
-(CC BY 4.0), aggregated and transformed by Brisbane Bowser Beater; see
-[the site's data page](https://brisbane-bowser-beater.vercel.app/about/data)
+`get_forecast` and `get_recent_history` serve aggregates that include live
+prices from the QLD Fuel Price Reporting API, which this project uses as a
+registered publisher under the State of Queensland's Fuel Price Data Licence.
+Their responses carry that licence's attribution notice, and that data and
+anything derived from it may not be republished.
+
+`get_cycle_model` is fitted from the QLD open-data CSVs only: "Fuel Price
+Reporting" by the State of Queensland (Queensland Treasury),
+[data.qld.gov.au](https://www.data.qld.gov.au) (CC BY 4.0), aggregated and
+modelled by Brisbane Bowser Beater. The docs tools carry the same
+attribution.
+
+See [the site's data page](https://brisbane-bowser-beater.vercel.app/about/data)
 for the full notices. General information only. Fuel prices and forecasts
 are estimates; verify before you fill.

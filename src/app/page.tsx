@@ -14,6 +14,7 @@ import {
   getLatestForecast,
 } from "@/lib/aggregates";
 import { tipsEnabled } from "@/lib/tips/config";
+import { supportEmail } from "@/lib/support";
 import { recordVisit } from "@/lib/usage";
 
 export default async function Home() {
@@ -120,7 +121,7 @@ export default async function Home() {
         </h2>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Describe your situation and the AI agent builds your fill-day plan.
-          No account, no tracking, anonymous caching.
+          No account, no third-party analytics, anonymous caching.
         </p>
         <div className="mt-1">
           <PrivacyTrustPane />
@@ -134,7 +135,7 @@ export default async function Home() {
           and the webhook are wired up. */}
       {tipsEnabled() && (
         <section aria-label="Support the developer" className="mb-4">
-          <TipJar />
+          <TipJar supportEmail={supportEmail()} />
         </section>
       )}
     </main>

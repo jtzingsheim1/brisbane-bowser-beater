@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Row retention for the two tables that would otherwise grow without bound:
-// `forecasts` (~30 rows/day, one batch per generation) and `agent_plans` (the
-// per-(situation, day) plan cache).
+// Row retention for the tables that would otherwise grow without bound:
+// `forecasts` (~30 rows/day, one batch per generation), `agent_plans` (the
+// per-(situation, day) plan cache) and `usage_monthly_visitors` (one salted
+// visitor hash per visitor per month, src/lib/usage.ts).
 //
 // This runs from the daily forecast generator (scripts/generate-forecast.ts),
 // which is what the GitHub Actions schedule actually invokes — deliberately
@@ -16,12 +17,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // keeping history) still have ~6 months to work with.
 export const FORECAST_RETENTION_DAYS = 183;
 export const AGENT_PLAN_RETENTION_DAYS = 30;
+// Visitor hashes exist only for the licence's clause 4.8 usage reporting
+// (active, new and returning users per month). Thirteen calendar months, the
+// current one included, covers a year-on-year report plus "returning" against
+// the month before; older months are dropped so a recurring hash can't build
+// a long visit history. The /privacy page states this period.
+export const USAGE_RETENTION_MONTHS = 13;
 
 const DAY_MS = 86_400_000;
 
 export type PruneResult = {
   forecastsCutoff: string;
   agentPlansCutoff: string;
+  usageCutoff: string;
   errors: string[];
 };
 
@@ -37,6 +45,18 @@ export async function pruneOldRows(
   // plan_date is a DATE column, so compare on the date part only.
   const agentPlansCutoff = new Date(
     now.getTime() - AGENT_PLAN_RETENTION_DAYS * DAY_MS,
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  // period_month is the first day of a month; keep the current month and the
+  // USAGE_RETENTION_MONTHS - 1 before it.
+  const usageCutoff = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() - (USAGE_RETENTION_MONTHS - 1),
+      1,
+    ),
   )
     .toISOString()
     .slice(0, 10);
@@ -59,5 +79,13 @@ export async function pruneOldRows(
     errors.push(`agent_plans: ${plans.error.message}`);
   }
 
-  return { forecastsCutoff, agentPlansCutoff, errors };
+  const usage = await client
+    .from("usage_monthly_visitors")
+    .delete()
+    .lt("period_month", usageCutoff);
+  if (usage.error) {
+    errors.push(`usage_monthly_visitors: ${usage.error.message}`);
+  }
+
+  return { forecastsCutoff, agentPlansCutoff, usageCutoff, errors };
 }
