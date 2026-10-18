@@ -73,7 +73,6 @@ function mockSupabase() {
   });
 }
 
-
 // History and forecast include live-API prices, so they must carry the
 // publisher licence's cl 4.3 notice (with the current year) and its cl 2.3
 // no-republication term, and must not offer them under CC BY.

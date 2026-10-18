@@ -105,14 +105,14 @@ Chip copy is finalised during Phase 4 implementation — structure is locked, wo
 
 Six bullets, plain language, lightly cheeky. Positioned so users see it *before* engaging the agent:
 
-- No account, no login. Nothing here is tied to who you are.
-- We don't store your conversation. It goes to Anthropic to generate your plan, then it's gone on our side. (Anthropic's terms apply to their bit.)
+- No account, no login, no name or email asked for.
+- We don't store what you type. It goes to Anthropic to generate your plan, then it's gone on our side. (Anthropic's terms apply to their bit.)
 - No third-party analytics and no cookies that follow you around. We count monthly visitors with a salted hash of your IP address, because our data licence asks for usage numbers.
-- Caching is anonymous. Same situation gets the same plan — we hash the inputs, we don't keep them.
+- Caching is anonymous. Same situation gets the same plan — we keep the plan for up to 30 days under a hash of your inputs, never the inputs themselves.
 - Only the planner is AI. The forecast chart is deterministic.
 - It's all on GitHub. Don't trust this list? Read the code.
 
-The visitor-count bullet was added 2026-10-18 after a terms review found "no tracking, no analytics" overstated the cl 4.8 usage counting. Other IP handling (short-lived rate-limit counters) is left to the `/privacy` page, linked from the footer.
+The visitor-count bullet and the reworded first, second and caching bullets date from 2026-10-18 (PR #164), after a terms review found the old wording overstated: the cl 4.8 visitor hash is a stable pseudonymous identifier, and the plan cache keeps the generated plan, which can repeat the user's details. Other IP handling (short-lived rate-limit counters) is left to the `/privacy` page, linked from the footer.
 
 ### Agent tools
 
@@ -213,6 +213,7 @@ The project should be safe to launch, walk away from, and take down without moni
 - Disable the GitHub Actions cron (one click in repo settings)
 - Email QLD per LUL clause 1.5 to terminate the agreement
 - Optionally purge `price_snapshots` / `forecasts` per clause 4.6
+- Purge `usage_monthly_visitors` (disabling the cron also stops its 13-month prune)
 - Optionally take Vercel deployment down
 
 The first two are instant; the rest can be done at leisure without licence panic.

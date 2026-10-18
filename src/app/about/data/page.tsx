@@ -42,10 +42,10 @@ export default function AboutDataPage() {
           We are a registered publisher under that program.
         </p>
         <p>
-          The historical background on the chart comes from the Queensland
-          government&rsquo;s open-data CSV (&ldquo;Fuel Price Reporting
-          2026&rdquo;), published under a Creative Commons Attribution 4.0
-          licence at{" "}
+          The historical background on the chart and the cycle model come from
+          the Queensland government&rsquo;s open-data CSVs (the yearly
+          &ldquo;Fuel Price Reporting&rdquo; datasets, 2023 to 2026), published
+          under a Creative Commons Attribution 4.0 licence; the latest is at{" "}
           <a
             href="https://data.qld.gov.au/dataset/fuel-price-reporting-2026"
             target="_blank"
@@ -103,9 +103,9 @@ export default function AboutDataPage() {
       </h2>
 
       <blockquote className="mt-4 border-l-4 border-zinc-300 pl-4 text-base leading-7 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-        Historical price data: &ldquo;Fuel Price Reporting 2026&rdquo; by the
-        State of Queensland (Queensland Treasury), aggregated by Brisbane Bowser
-        Beater, used under{" "}
+        Historical price data: the &ldquo;Fuel Price Reporting&rdquo; datasets
+        (2023 to 2026) by the State of Queensland (Queensland Treasury),
+        aggregated by Brisbane Bowser Beater, used under{" "}
         <a
           href="https://creativecommons.org/licenses/by/4.0/"
           target="_blank"
@@ -116,12 +116,12 @@ export default function AboutDataPage() {
         </a>
         . Sourced from{" "}
         <a
-          href="https://data.qld.gov.au/dataset/fuel-price-reporting-2026"
+          href="https://data.qld.gov.au/dataset?q=fuel+price+reporting"
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-zinc-950 underline dark:text-zinc-50"
         >
-          data.qld.gov.au/dataset/fuel-price-reporting-2026
+          data.qld.gov.au
         </a>
         .
       </blockquote>

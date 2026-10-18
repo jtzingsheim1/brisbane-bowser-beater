@@ -4,11 +4,11 @@ export default function PrivacyTrustPane() {
   return (
     <Disclosure summary="How this works & your privacy">
       <ul className="list-disc space-y-1 ps-5">
-        <li>No account, no login. Nothing here is tied to who you are.</li>
+        <li>No account, no login, no name or email asked for.</li>
         <li>
-          We don&rsquo;t store your conversation. It goes to Anthropic to
-          generate your plan, then it&rsquo;s gone on our side.
-          (Anthropic&rsquo;s terms apply to their bit.)
+          We don&rsquo;t store what you type. It goes to Anthropic to generate
+          your plan, then it&rsquo;s gone on our side. (Anthropic&rsquo;s
+          terms apply to their bit.)
         </li>
         <li>
           No third-party analytics and no cookies that follow you around. We
@@ -17,7 +17,8 @@ export default function PrivacyTrustPane() {
         </li>
         <li>
           Caching is anonymous. Same situation gets the same plan &mdash; we
-          hash the inputs, we don&rsquo;t keep them.
+          keep the plan for up to 30 days under a hash of your inputs, never
+          the inputs themselves.
         </li>
         <li>Only the agent is AI. The forecast chart is deterministic.</li>
         <li>

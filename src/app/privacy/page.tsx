@@ -45,7 +45,7 @@ export default async function PrivacyPage() {
       <div className="mt-8 space-y-4 text-base leading-7">
         <p>
           No account, no login, no third-party analytics and no cookies that
-          follow you around. Here is everything this site keeps, and what the
+          follow you around. Here is what this site keeps, and what the
           services it uses can see.
         </p>
       </div>
@@ -55,20 +55,23 @@ export default async function PrivacyPage() {
         <li>
           <strong>A monthly visitor count.</strong> Our fuel data licence asks
           for monthly usage numbers, so we record one row per visitor per
-          month: a salted hash of your IP address and a coarse region (such as
-          &ldquo;QLD&rdquo;). We never store the IP address itself. Rows are
+          month: a salted hash of your IP address, a coarse region (such as
+          &ldquo;QLD&rdquo;) and the time of your first visit that month. We
+          never store the IP address itself. Rows are
           deleted after {USAGE_RETENTION_MONTHS} months, counting the current
           one.
         </li>
         <li>
-          <strong>Rate limiting.</strong> To stop abuse, the AI planner and the
-          tip jar count requests per IP address. Those counters expire within a
-          few minutes.
+          <strong>Rate limiting.</strong> To stop abuse, the AI planner
+          {tips ? " and the tip jar count" : " counts"} requests per IP
+          address, in counters keyed by the address itself. Those counters
+          expire within a few minutes.
         </li>
         <li>
-          <strong>Cached plans.</strong> The planner caches each plan against
-          a hash of the situation you described, not the words themselves, so
-          the same situation gets the same plan. Cached plans are deleted after{" "}
+          <strong>Cached plans.</strong> The planner keeps each plan it writes,
+          filed under a hash of what you typed rather than your words, so the
+          same situation gets the same plan. A plan can repeat details you
+          gave it, such as your fill routine. Cached plans are deleted after{" "}
           {AGENT_PLAN_RETENTION_DAYS} days.
         </li>
       </ul>
@@ -76,7 +79,8 @@ export default async function PrivacyPage() {
       <h2 className={h2Class}>What Anthropic sees</h2>
       <p className="mt-4 text-base leading-7">
         If you use the AI planner, your conversation goes to Anthropic to
-        generate your plan. We don&rsquo;t store it.{" "}
+        generate your plan. We don&rsquo;t store what you type; only the plan
+        is cached, as above.{" "}
         <a
           href="https://www.anthropic.com/legal/privacy"
           target="_blank"
@@ -88,14 +92,23 @@ export default async function PrivacyPage() {
         applies to their part.
       </p>
 
+      <h2 className={h2Class}>Hosting</h2>
+      <p className="mt-4 text-base leading-7">
+        Like any website, our host (Vercel) receives your IP address with each
+        request in order to serve the page, and the rate-limit counters above
+        run on Upstash.
+      </p>
+
       {tips && (
         <>
           <h2 className={h2Class}>Tips and what Stripe sees</h2>
           <div className="mt-4 space-y-4 text-base leading-7">
             <p>
               Tips are paid on Stripe&rsquo;s hosted checkout, so your card details
-              never reach this site. Stripe asks for your name and email, and we
-              can see those in our Stripe account. This site&rsquo;s database
+              never reach this site. Stripe collects details such as your name,
+              email and card, and in our Stripe account we can see your name,
+              email, and your card&rsquo;s brand, country and last four
+              digits. This site&rsquo;s database
               doesn&rsquo;t store them: it keeps only Stripe&rsquo;s reference
               IDs, the amount, the currency, the status and the time of each
               payment.{" "}

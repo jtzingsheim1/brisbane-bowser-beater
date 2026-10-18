@@ -24,7 +24,7 @@ import {
 } from "./rag.js";
 
 export const SERVER_NAME = "brisbane-bowser-beater";
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.3.0";
 
 // Attribution depends on where a tool's data comes from (see the site's
 // /about/data page, which carries the same notices).

@@ -59,7 +59,7 @@ they do.
    reasons over the same forecast the chart shows.
 
 There's also a small **"Shout me a litre"** tip jar — Stripe-hosted Checkout,
-fuel-themed amounts, and a strict no-donor-data posture (see
+fuel-themed amounts, and a strict no-tipper-data posture (see
 [Privacy](#privacy)).
 
 ## From prompt to production
@@ -216,9 +216,9 @@ No accounts, no login, no cookies that follow you around, no third-party or
 client-side analytics. Because the data licence asks for monthly usage
 numbers, the server counts visitors with a salted hash of the IP address (never
 the address itself), kept for 13 months. The site's `/privacy` page has the
-details. The planner conversation goes to Anthropic to generate your plan and
-isn't stored on our side; repeatable results are cached against a **hash** of
-the inputs, not the inputs themselves. It's all open source — read the code.
+details. The planner conversation goes to Anthropic to generate your plan, and what
+you type isn't stored on our side; the generated plan is cached for up to 30
+days against a **hash** of the inputs, not the inputs themselves. It's all open source — read the code.
 
 **Tips ("Shout me a litre"):** payments run through Stripe-hosted Checkout, so
 card details never touch this site. Deliberately, **no tipper PII ever enters

@@ -44,7 +44,9 @@ https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp
 
 The URL is public because it is useless without a key: an unauthenticated
 call returns 403 at the gateway, before any Lambda runs. Keys are available
-on request; get in touch if you would like one. Each key is metered
+on request; get in touch if you would like one. A key is issued on the
+condition that the live-price data it returns is not republished (see "Data
+and attribution" below). Each key is metered
 separately, so one key running out of quota never affects another, and any
 key can be rotated without disturbing the rest.
 
@@ -285,8 +287,7 @@ terraform init -backend=false && terraform validate
 prices from the QLD Fuel Price Reporting API, which this project uses as a
 registered publisher under the State of Queensland's Fuel Price Data Licence.
 Their responses carry that licence's attribution notice, and that data and
-anything derived from it may not be republished. A key is issued on that
-condition.
+anything derived from it may not be republished.
 
 `get_cycle_model` is fitted from the QLD open-data CSVs only: "Fuel Price
 Reporting" by the State of Queensland (Queensland Treasury),
