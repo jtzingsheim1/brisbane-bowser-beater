@@ -112,6 +112,8 @@ Six bullets, plain language, lightly cheeky. Positioned so users see it *before*
 - Only the planner is AI. The forecast chart is deterministic.
 - It's all on GitHub. Don't trust this list? Read the code.
 
+Below the bullets, one line links to the `/privacy` page for the full details and retention periods.
+
 The visitor-count bullet and the reworded first, second and caching bullets date from 2026-10-18 (PR #164), after a terms review found the old wording overstated: the cl 4.8 visitor hash is a stable pseudonymous identifier, and the plan cache keeps the generated plan, which can repeat the user's details. Other IP handling (short-lived rate-limit counters) is left to the `/privacy` page, linked from the footer.
 
 ### Agent tools
