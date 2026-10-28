@@ -208,17 +208,18 @@ The project should be safe to launch, walk away from, and take down without moni
 
 **1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (default 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The threshold is env-tunable via `BBB_STALENESS_MINUTES` (positive integer, clamped to 24 h max) — right-sized for the actual product, which is a daily aggregate average where a few hours of intraday lag doesn't change what's displayed. Set to a higher value (e.g. 360–720) to ride out GitHub Actions scheduler lag; leave unset for the conservative default. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails.
 
-**2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Two clicks in the Vercel dashboard, no code change, no race conditions.
+**2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Change it in the Vercel dashboard and redeploy (env var changes reach only new deployments): no code change, no race conditions.
 
 **3. Permanent exit path.** When done:
-- Set `BBB_PUBLIC=false` (immediate visible takedown)
+- Set `BBB_PUBLIC=false` and redeploy (visible takedown within minutes)
 - Disable the GitHub Actions cron (one click in repo settings)
 - Email QLD per LUL clause 1.5 to terminate the agreement
 - Stop using `price_snapshots` / `forecasts`: clause 4.6 bars any use of the Licensed Data or derived products after termination, and purging them is the simplest way to show it
 - Purge `usage_monthly_visitors` (disabling the cron also stops its 13-month prune)
+- Decommission the MCP stack (`mcp-deploy` in destroy mode; `infra/BOOTSTRAP.md` → "Decommissioning"): `BBB_PUBLIC` doesn't gate it, and its `get_forecast` / `get_recent_history` read the same tables
 - Optionally take Vercel deployment down
 
-The first two are instant; the rest can be done at leisure without licence panic.
+The first two take minutes; the rest can be done at leisure, except that the MCP stack should go before the licence terminates (cl 4.6).
 
 ---
 
@@ -297,7 +298,7 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 | LUL clause | Obligation | How we satisfy it |
 |---|---|---|
 | 2.3 — publication: no republication | A publisher may publish the data and derived products but must prohibit further publication | `/about/data` says the data may not be republished; MCP `get_forecast` / `get_recent_history` responses carry a no-republication term (PR #164) |
-| 2.3 — publication: currency | What we publish must be current and accurate: price changes within 30 min, other data (locality, address, brand) within 24 hr of a change | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly; the staleness gate (see "Operational hygiene") takes the site down rather than publish stale data |
+| 2.3 — publication: currency | What we publish must be current and accurate: price changes within 30 min, other data (locality, address, brand) within 24 hr of a change | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly; the website's staleness gate (see "Operational hygiene") takes the site down rather than publish stale data. The MCP server has no such gate (parked in `PLAN.md`) |
 | 2.2 — value-added products | Allowed if the Licensed Data's form is irreversibly changed, or it is augmented or combined with other data | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
 | 4.2 / 4.3 — attribution | Two verbatim notices required (raw-data + derived-product) | Both notices appear verbatim on `/about/data` page, linked from footer on every page |
 | 4.4 — provenance | Distinguish data sourced from the Licensor from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
@@ -335,7 +336,7 @@ Recurring failure mode in this repo: a committed doc asserts present-tense state
 2. **State the rule, not the derived value.** "500 requests/month per key" survives a second key; "the ceiling is 1000" doesn't.
 3. **Status lives in one place — `PLAN.md`.** Other docs link to it rather than restating it.
 4. **Every PR carries its own `PLAN.md` update, written as post-merge truth.** The status text describes the world after the merge — never "this PR will…" or "pending merge". A PR that changes status without updating `PLAN.md` in the same diff is incomplete.
-5. **Name a version only where it matters.** State a library major, model or runtime version only where it changes how code is written or what the system costs (this file's tech stack, the Haiku model behind `ask_docs`). Elsewhere say "Next.js", not "Next.js 16". Every version a doc does state is checked against the file that pins it by `tests/doc-versions.test.ts`; extend its patterns when a doc names a new one.
+5. **Name a version only where it matters.** State a library major, model or runtime version only where it changes how code is written or what the system costs (this file's tech stack, the Haiku model behind `ask_docs`). Elsewhere name the library without its major. Every version a doc does state is checked against the file that pins it by `tests/doc-versions.test.ts`; extend its patterns when a doc names a new one.
 6. **Check a licence clause number against the licence text before citing it** ([Fuel Price Data Licence Terms and Conditions](https://fuelpricesqld.com.au/documents/LimitedUseLicence.pdf)). Clause 2.3 carries two obligations, no further publication and 30-minute / 24-hour currency, so say which one you mean.
 
 Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`, `tests/doc-versions.test.ts`).

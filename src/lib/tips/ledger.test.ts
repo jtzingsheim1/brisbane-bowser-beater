@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Duplicate delivery: Stripe retries a webhook until it sees a 2xx, and can
 // redeliver an event it already got a 2xx for. The ledger must record each
@@ -33,7 +33,9 @@ vi.mock("@/lib/supabase/server", () => ({
           row: Row,
           opts: { onConflict?: string; ignoreDuplicates?: boolean } = {},
         ) {
-          if (opts.onConflict !== "stripe_event_id") {
+          // PostgREST resolves conflicts on the primary key when onConflict
+          // is omitted, and stripe_event_id is the primary key.
+          if ((opts.onConflict ?? "stripe_event_id") !== "stripe_event_id") {
             return Promise.resolve({
               error: { code: "23505", message: "duplicate key value" },
             });
@@ -93,7 +95,11 @@ function deliver(post: (req: Request) => Promise<Response>) {
 describe("tip ledger duplicate delivery", () => {
   beforeEach(() => {
     table.clear();
-    process.env.STRIPE_WEBHOOK_SECRET = SECRET;
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", SECRET);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("records a redelivered event once and acknowledges both deliveries", async () => {

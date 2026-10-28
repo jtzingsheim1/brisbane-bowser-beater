@@ -44,7 +44,7 @@ needs a code change.
 
 ## 3. Verify (before going public — keep `BBB_PUBLIC=false`)
 With `BBB_PUBLIC=false`, confirm the site shows the **paused** page (kill switch works).
-Then temporarily set `BBB_PUBLIC=true` and check:
+Then temporarily set `BBB_PUBLIC=true`, redeploy, and check:
 - [ ] Homepage renders the chart (history + forecast line + band) and the daily narrative.
 - [ ] `/about/data` shows the QLD attribution notices; footer disclaimer present.
 - [ ] Agent: pick a chip → streams a dated plan with visible tool calls.
@@ -62,7 +62,7 @@ Cross-check against [`abuse-audit.md`](abuse-audit.md) → "Pre-deploy checklist
 
 ## 5. The off-switch (for later)
 To pause or take down — no code change needed:
-- **Pause:** `BBB_PUBLIC=false` (instant).
+- **Pause:** `BBB_PUBLIC=false`, then redeploy (a minute or two; env var changes reach only new deployments).
 - **Stop the feed:** disable the GitHub Actions workflows.
 - **Wind down the licence:** see CLAUDE.md → "Operational hygiene → Permanent exit path".
 

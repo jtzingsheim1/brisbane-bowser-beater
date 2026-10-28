@@ -45,6 +45,7 @@ Severity columns reflect the audit lanes' own ratings. Effort: S = minutes, M = 
 ### Still parked (post-2026-08-23 triage)
 
 - **Add `analyze` (CodeQL) as a required branch-protection check on `main`.** Currently only `check` is required, so CodeQL runs on PRs but doesn't block merges. One click in repo settings → Branches (or Rules) → add `analyze` to required status checks. Instructions handed to the maintainer 2026-08-23; delete this row once confirmed.
+- **MCP staleness gate.** The website stops showing data once the latest ingestion is older than `BBB_STALENESS_MINUTES` (licence cl 2.3 currency), but the MCP server's `get_forecast` / `get_recent_history` have no equivalent check and keep serving the last batch if ingestion stops. Found in the 2026-10-28 housekeeping review (PR #179). Fix: read `latest_snapshot_ingested_at` in `mcp/src/data.ts` and return a "data temporarily unavailable" result past the threshold; ships via `mcp-deploy`.
 - **Architect dashboard glances (shrunk from the original 30-item checklist, whose full text is gone with its transcript).** Worth a look when next in the dashboards: V13 production-branch=main, V15 deployment-protection off, S5/S6 Supabase project not paused, A6 no orphaned dev Anthropic keys.
 
 **Known caveat, not a task:** backdated `transaction_date_utc` can trigger an early `liveCoverageRampEnd` threshold-cross. Inherent to first-seen semantics, accepted — recorded so it is recognised if it ever surfaces, not tracked as work.
@@ -171,7 +172,7 @@ Cost protection:
 
 Operational off-switch (see CLAUDE.md "Operational hygiene"):
 - ✅ **Staleness check on render** — every page reads the latest `price_snapshots.ingested_at`; if older than 60 min, render a "Data temporarily unavailable" page instead of chart/agent. Auto-degradation when cron fails.
-- ✅ **`BBB_PUBLIC` env var kill switch** — when unset, whole app renders "currently paused" page. Flip in Vercel dashboard for instant takedown.
+- ✅ **`BBB_PUBLIC` env var kill switch** — when unset, whole app renders "currently paused" page. Flip in Vercel dashboard and redeploy to take the site down.
 - ✅ **Server-side aggregate usage counts** — per LUL clause 4.8. `recordVisit()` (`src/lib/usage.ts`) writes one row per (month, salted-IP-hash, region) to `usage_monthly_visitors` (migration 0009), fired post-response from the homepage via `after()`. No raw IP, no cookies, internal-only (no anon SELECT). No-op until `USAGE_SALT` is set. Privacy/trust pane stays literally true. (Superseded 2026-10-18, PR #164: the pane now discloses the visitor hash.)
 
 ### Phase 6 — Abuse audit (mandatory before deploy)

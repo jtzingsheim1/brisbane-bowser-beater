@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,20 +13,18 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
-// Every committed doc that might state a version. Historical event records in
-// PLAN.md (e.g. "Phase 4 shipped on AI SDK v6") are true as written, so
-// PLAN.md is deliberately not scanned.
-const DOCS = [
-  "README.md",
-  "CLAUDE.md",
-  "AGENTS.md",
-  "mcp/README.md",
-  "infra/BOOTSTRAP.md",
-  "docs/abuse-audit.md",
-  "docs/cycle-visuals-design.md",
-  "docs/deploy-runbook.md",
-  "docs/mcp-rag-design.md",
-];
+// Every committed Markdown file, so a new doc is covered without editing this
+// list. Historical event records in PLAN.md (e.g. "Phase 4 shipped on AI SDK
+// v6") are true as written, so PLAN.md is deliberately not scanned.
+const DOCS = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
+  .split("\n")
+  .filter((p) => p && p !== "PLAN.md");
+
+// The MCP subproject pins its own dependencies, and its docs describe the
+// Lambda runtime, so library majors are checked against the root package.json
+// only outside it, and Node versions only inside it.
+const isMcpDoc = (p: string) =>
+  p.startsWith("mcp/") || p.startsWith("infra/") || p === "docs/mcp-rag-design.md";
 
 const rootPkg = JSON.parse(read("package.json")) as {
   dependencies: Record<string, string>;
@@ -40,10 +39,13 @@ function major(name: string): string {
   return m[1];
 }
 
-/** Every version a pattern captures across the scanned docs. */
-function stated(pattern: RegExp): { doc: string; version: string }[] {
+/** Every version a pattern captures across the given docs. */
+function stated(
+  pattern: RegExp,
+  docs: string[] = DOCS,
+): { doc: string; version: string }[] {
   const found: { doc: string; version: string }[] = [];
-  for (const doc of DOCS) {
+  for (const doc of docs) {
     for (const m of read(doc).matchAll(pattern)) {
       found.push({ doc, version: m[1] });
     }
@@ -62,7 +64,7 @@ describe("versions stated in docs match what the repo pins", () => {
 
   for (const [label, pattern, expected] of libraries) {
     it(`${label} majors match package.json (${expected})`, () => {
-      for (const s of stated(pattern)) {
+      for (const s of stated(pattern, DOCS.filter((p) => !isMcpDoc(p)))) {
         expect(`${s.doc}: ${label} ${s.version}`).toBe(
           `${s.doc}: ${label} ${expected}`,
         );
@@ -84,7 +86,7 @@ describe("versions stated in docs match what the repo pins", () => {
   it("the Node version stated for the Lambda matches infra/lambda.tf", () => {
     const runtime = read("infra/lambda.tf").match(/runtime\s*=\s*"nodejs(\d+)\.x"/);
     expect(runtime).not.toBeNull();
-    for (const s of stated(/Node(?:\.js)? (\d+)/g)) {
+    for (const s of stated(/Node(?:\.js)? (\d+)/g, DOCS.filter(isMcpDoc))) {
       expect(`${s.doc}: Node ${s.version}`).toBe(`${s.doc}: Node ${runtime![1]}`);
     }
   });

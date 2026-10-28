@@ -202,13 +202,13 @@ the URL alone is safe to publish. Get in touch if you would like a key.
 The app is built to be cheap to run and safe to leave unattended:
 
 - **Hard spend cap** on the Anthropic key, plus per-IP rate limiting, aggressive
-  caching, and per-call token/step caps — so the only paid surface (the agent)
-  can't run away. See [`docs/abuse-audit.md`](docs/abuse-audit.md).
+  caching, and per-call token/step caps — so the agent's paid calls
+  can't run away (the MCP server's paid call has its own AWS guards, above). See [`docs/abuse-audit.md`](docs/abuse-audit.md).
 - **Self-policing on stale data:** if the latest ingestion is older than a
   configured freshness threshold, the app shows a "temporarily unavailable"
   page instead of stale licensed data — no human needed.
 - **Kill switch:** a single env var (`BBB_PUBLIC`) flips the whole site to a
-  paused page for instant takedown.
+  paused page; flip it and redeploy to take the site down.
 
 ### Privacy
 
