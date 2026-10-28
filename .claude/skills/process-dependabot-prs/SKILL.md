@@ -91,7 +91,7 @@ For each PR, in turn:
 ## Verify
 
 If anything merged: with main checked out fresh (see Sync), run
-`wait-checks.sh` and `${CLAUDE_SKILL_DIR}/scripts/wait-deploy.sh` on
+`${CLAUDE_SKILL_DIR}/scripts/wait-checks.sh` and `${CLAUDE_SKILL_DIR}/scripts/wait-deploy.sh` on
 `$(git rev-parse origin/main)`, then `npm audit --package-lock-only` at the
 repo root and in `mcp/`.
 

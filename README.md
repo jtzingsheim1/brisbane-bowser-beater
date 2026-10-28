@@ -140,10 +140,10 @@ licence requires.
 
 | Layer | Choice |
 |---|---|
-| Framework | Next.js 16 (App Router, RSC) + React 19 + TypeScript (strict) |
-| UI / charts | Tailwind v4 + Recharts |
+| Framework | Next.js (App Router, RSC) + React + TypeScript (strict) |
+| UI / charts | Tailwind + Recharts |
 | Database | Supabase (Postgres) — aggregate display tables, RLS-protected |
-| AI | Vercel AI SDK v6 + Anthropic Claude (agent only) |
+| AI | Vercel AI SDK + Anthropic Claude (agent only) |
 | Data pipeline | GitHub Actions (30-min ingest, weekly site refresh, daily forecast + narrative) → Supabase |
 | Hosting | Vercel |
 
@@ -173,7 +173,7 @@ answer with citations back to the files it came from. The corpus is a
 curated allowlist of this repo's public docs, not a glob — internal working
 notes are excluded, and a test enforces that.
 
-Generation is the only paid call anywhere in the project, so it sits behind
+Generation is the MCP server's only paid call, so it sits behind
 layered guards that AWS itself enforces rather than the code: a monthly
 request quota on the API key, per-request caps (input length, retrieved
 chunks, output tokens, single attempt with no retries), and a budget action
@@ -202,13 +202,13 @@ the URL alone is safe to publish. Get in touch if you would like a key.
 The app is built to be cheap to run and safe to leave unattended:
 
 - **Hard spend cap** on the Anthropic key, plus per-IP rate limiting, aggressive
-  caching, and per-call token/step caps — so the only paid surface (the agent)
-  can't run away. See [`docs/abuse-audit.md`](docs/abuse-audit.md).
+  caching, and per-call token/step caps — so the agent's paid calls
+  can't run away (the MCP server's paid call has its own AWS guards, above). See [`docs/abuse-audit.md`](docs/abuse-audit.md).
 - **Self-policing on stale data:** if the latest ingestion is older than a
   configured freshness threshold, the app shows a "temporarily unavailable"
   page instead of stale licensed data — no human needed.
 - **Kill switch:** a single env var (`BBB_PUBLIC`) flips the whole site to a
-  paused page for instant takedown.
+  paused page; flip it and redeploy to take the site down.
 
 ### Privacy
 

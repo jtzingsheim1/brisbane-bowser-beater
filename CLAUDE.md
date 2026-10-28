@@ -8,7 +8,7 @@ A single-page web app for Brisbane drivers, combining live fuel price data with 
 
 Australian retail fuel prices in major capital cities exhibit recurring cycles that have been studied by the ACCC, which publishes regular [fuel and petrol monitoring reports](https://www.accc.gov.au/by-industry/petrol-and-fuel/fuel-and-petrol-monitoring). The cycles are not closely correlated with wholesale price movements. The specific characteristics of the **current** Brisbane cycle — period, amplitude, asymmetry, shape, regularity, typical station spread — are what this project's Phase 2 characterisation measures from QLD Fuel Price Reporting API data.
 
-**Measured characterisation (Phase 2, landed 2026-05).** The offline Python pipeline in `/analysis/` characterised the cycle from ~35 months of QLD open-data CSVs (2023-03 → 2026-02, Brisbane core-Metro U91, 20 cycles after excluding 64d+ merges). Observation-only figures, now the source of truth in `analysis/output/cycle_params.json`:
+**Measured characterisation (Phase 2, landed 2026-05).** The offline Python pipeline in `/analysis/` characterised the cycle from ~35 months of QLD open-data CSVs (2023-03 → 2026-02, Brisbane core-Metro U91, 20 cycles after excluding periods over 55 days as missed-trough merges). Observation-only figures, now the source of truth in `analysis/output/cycle_params.json`:
 
 - **Cycle length** ~39 days (recency-weighted; inter-cycle range ~31–46).
 - **Swing** ~$0.35/L trough-to-peak, stable across all three years.
@@ -109,7 +109,7 @@ Six bullets, plain language, lightly cheeky. Positioned so users see it *before*
 - We don't store what you type. It goes to Anthropic to generate your plan, then it's gone on our side. (Anthropic's terms apply to their bit.)
 - No third-party analytics and no cookies that follow you around. We count monthly visitors with a salted hash of your IP address, because our data licence asks for usage numbers.
 - Caching is anonymous. Same situation gets the same plan — we keep the plan for up to 30 days under a hash of your inputs, never the inputs themselves.
-- Only the planner is AI. The forecast chart is deterministic.
+- Only the agent is AI. The forecast chart is deterministic.
 - It's all on GitHub. Don't trust this list? Read the code.
 
 Below the bullets, one line links to the `/privacy` page for the full details and retention periods.
@@ -143,7 +143,7 @@ Concrete, dated, with reasoning. Example:
 | UI | React 19 (strict) + TypeScript (strict mode) |
 | Database | Supabase (Postgres) |
 | Deployment | Vercel (hosting) + GitHub Actions (cron — free for public repos, keeps Vercel Hobby clean) |
-| AI orchestration | Vercel AI SDK v6 |
+| AI orchestration | Vercel AI SDK v7 |
 | LLM | Anthropic Claude API (direct, via `@ai-sdk/anthropic`) |
 | Rate limiting | Upstash Redis (Vercel marketplace free tier) |
 | Charting | Recharts |
@@ -168,7 +168,7 @@ Split into three stages:
 
 Bootstrapped from historical inter-cycle variance — avoids cold-start of using residuals from past forecasts. Falls back to point-only forecast if implementation gets fiddly inside the time budget.
 
-User-facing one-liner near the chart:
+One-liner explaining the band (README "How the forecast works"; the chart itself doesn't show it):
 
 > *"Best guess in the middle. The band shows the range past cycles have moved within — actual prices usually land somewhere inside it."*
 
@@ -179,7 +179,7 @@ Long-form methodology lives in README "How the forecast works" section (Phase 7)
 - `/analysis/*.py` — Python scripts (own venv), exploratory but version-control-friendly: `download_data.py` (cache QLD CSVs), `cycle_lib.py` (load + daily series), `cycle_fit.py` (detrend/detect/canonical), `trend_check.py` (drift test), `build_params.py` (finalise). No notebook — deliberate (clean git diffs).
 - `/analysis/output/cycle_params.json` — committed artifact, the contract between Python and TS
 - `/analysis/output/history_daily.json` + `cycle_shapes.json` — committed artifacts behind the public cycle visuals (education charts, README images, OG card), emitted by `analysis/figures.py` pinned to the committed fit; `src/lib/history/artifacts.test.ts` fails the build if they drift from `cycle_params.json`
-- `/lib/forecast/` — TS production code, reads the JSON, knows nothing about Python
+- `src/lib/forecast/` — TS production code, reads the JSON, knows nothing about Python
 - Vercel runtime is pure TS — Python never runs on the server
 
 ---
@@ -208,17 +208,18 @@ The project should be safe to launch, walk away from, and take down without moni
 
 **1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (default 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The threshold is env-tunable via `BBB_STALENESS_MINUTES` (positive integer, clamped to 24 h max) — right-sized for the actual product, which is a daily aggregate average where a few hours of intraday lag doesn't change what's displayed. Set to a higher value (e.g. 360–720) to ride out GitHub Actions scheduler lag; leave unset for the conservative default. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails.
 
-**2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Two clicks in the Vercel dashboard, no code change, no race conditions.
+**2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Change it in the Vercel dashboard and redeploy (env var changes reach only new deployments): no code change, no race conditions.
 
 **3. Permanent exit path.** When done:
-- Set `BBB_PUBLIC=false` (immediate visible takedown)
+- Set `BBB_PUBLIC=false` and redeploy (visible takedown within minutes)
 - Disable the GitHub Actions cron (one click in repo settings)
 - Email QLD per LUL clause 1.5 to terminate the agreement
-- Optionally purge `price_snapshots` / `forecasts` per clause 4.6
+- Stop using `price_snapshots` / `forecasts`: clause 4.6 bars any use of the Licensed Data or derived products after termination, and purging them is the simplest way to show it
 - Purge `usage_monthly_visitors` (disabling the cron also stops its 13-month prune)
+- Decommission the MCP stack (`mcp-deploy` in destroy mode; `infra/BOOTSTRAP.md` → "Decommissioning"): `BBB_PUBLIC` doesn't gate it, and its `get_forecast` / `get_recent_history` read the same tables
 - Optionally take Vercel deployment down
 
-The first two are instant; the rest can be done at leisure without licence panic.
+The first two take minutes; the rest can be done at leisure, except that the MCP stack should go before the licence terminates (cl 4.6).
 
 ---
 
@@ -240,7 +241,6 @@ The first two are instant; the rest can be done at leisure without licence panic
 | Tests beyond happy path + cost-control | Pragmatic coverage |
 | SEO / analytics / error monitoring | Out |
 | "Explain the cycle" 5th starter chip | Backlog — interesting but not MVP |
-| Long-form privacy page | Only if ever needed |
 | **Section 2: per-station price list with postcode search** | Cut — materially expands publisher-licence exposure (per-station attribution + 30-min freshness), and the cycle/agent in Section 1 carries the differentiated value. Per-station lookups already well-served by PetrolSpy etc. Backlog candidate for post-MVP. |
 
 ### Knowingly temporary (documented in README roadmap)
@@ -297,15 +297,18 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 
 | LUL clause | Obligation | How we satisfy it |
 |---|---|---|
-| 2.3 — freshness | Price changes published within 30 min; other data within 24 hr | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly |
-| 2.2 — value-added products | Allowed if Licensed Data is irreversibly transformed or augmented | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
+| 2.3 — publication: no republication | A publisher may publish the data and derived products but must prohibit further publication | `/about/data` says the data may not be republished; MCP `get_forecast` / `get_recent_history` responses carry a no-republication term (PR #164) |
+| 2.3 — publication: currency | What we publish must be current and accurate: price changes within 30 min, other data (locality, address, brand) within 24 hr of a change | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly; the website's staleness gate (see "Operational hygiene") takes the site down rather than publish stale data. The MCP server has no such gate (parked in `PLAN.md`) |
+| 2.2 — value-added products | Allowed if the Licensed Data's form is irreversibly changed, or it is augmented or combined with other data | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
 | 4.2 / 4.3 — attribution | Two verbatim notices required (raw-data + derived-product) | Both notices appear verbatim on `/about/data` page, linked from footer on every page |
-| 4.4 — provenance | Distinguish QLD data from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
+| 4.4 — provenance | Distinguish data sourced from the Licensor from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
 | 4.8 — usage data | Active/new/returning users per month, with region split, on request within 10 business days | Server-side aggregate counts from request logs + IP-region lookup. No cookies, no behavioural tracking. Reconcilable with privacy/trust pane — see operational note below |
 | 5.x — audit | Cooperate with reasonable Licensor audits | Document our data flow in `/about/data` and code comments; aggregate logs available if requested |
+| 2.4 / 3.1 — third parties | No distribution to third parties beyond cl 2.3 publication; providing data to a third party *to publish* needs the Licensor's written approval | Our reading: everything we serve, site and MCP alike, is our own cl 2.3 publication, carrying the no-republication term, and no third party is given data to publish. If the Licensor ever reads MCP access as supplying third parties to publish, cl 2.4 approval would be needed |
+| 4.7 — no endorsement | Don't imply the Licensor endorses or is connected with us; no Queensland Government logos or marks | Footer and `/about/data` state the site is not affiliated with or endorsed by the Queensland Government; no government marks used |
 | 6.3 — indemnity | We indemnify Licensor for our use | Standard. Footer disclaimer + forecast/estimate framing already minimise our exposure |
 | 1.4 — fee | $1 on demand | Symbolic. Pay if asked. |
-| 1.5 — termination | Either side, 20 business days notice (3 days if our publication is "not current or accurate") | The operational off-switch (see "Operational hygiene") gives us a clean wind-down path |
+| 1.5 — termination | Either side, 20 business days' notice; the Licensor may give 3 business days' notice if our publication is not current or accurate (or we are in breach) and we haven't corrected it within 3 business days of being told | The operational off-switch (see "Operational hygiene") gives us a clean wind-down path |
 
 **Privacy/trust pane reconciliation**: the pane's visitor-count bullet and the `/privacy` page state the cl 4.8 counting openly (a salted IP hash per visitor per month, pruned after 13 months by `src/lib/retention.ts`). No cookies, no client JS, no third-party analytics.
 
@@ -318,9 +321,9 @@ Most conventions inherit from the global standards. Project-specific notes:
 - `cycle_params.json` is the contract between the Python analysis scripts and TS production code. Versioned in git. Schema documented inline in `analysis/build_params.py` and mirrored in `src/lib/forecast/types.ts`. The manually-authored `anomaly_notes` block (added for the Feb–Apr 2026 anomaly, issue #47 PR-3) is written by hand into the JSON; re-author on every quarterly re-fit since the Python pipeline doesn't generate it.
 - Agent system prompt encodes the Brisbane cycle context AND chip-cell awareness (including the C-cell road-trip variant).
 - No PII written to Supabase. Caches keyed on hashes of inputs, not raw inputs.
-- Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `/lib/forecast/` is TS-only.
+- Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `src/lib/forecast/` is TS-only.
 - Agent responses stream tool calls visibly to the user — part of the product's transparency story.
-- **Supabase tables need explicit GRANTs.** The project's "Automatically expose new tables" setting is OFF (deliberate — explicit control over the Data API surface). Every new table needs `grant select on <table> to anon` and `grant all on <table> to service_role` in its migration. Migration 0004 sets `alter default privileges` for future tables, but verify each migration grants explicitly as belt-and-braces — default privileges only cover tables created by the same role that ran the ALTER, which may not be the role running future migrations.
+- **Supabase tables need explicit GRANTs.** The project's "Automatically expose new tables" setting is OFF (deliberate — explicit control over the Data API surface). Every new table needs `grant all on <table> to service_role` in its migration, plus `grant select on <table> to anon` only if it is a public display table (`forecasts`, `daily_narrative`); internal tables (`sites`, `price_snapshots`, `agent_plans`, `usage_monthly_visitors`, `tip_ledger`) get no anon access, and `revoke all on <table> from anon` where default privileges would otherwise grant it. Migration 0004 sets `alter default privileges` for future tables, but verify each migration grants explicitly as belt-and-braces — default privileges only cover tables created by the same role that ran the ALTER, which may not be the role running future migrations.
 - **Run the checks before opening a code PR.** For any PR that changes code, run `npm run lint`, `npm test` and `npm run build` locally first (and `npm run check` in `mcp/` for that subproject). Doc- and config-only PRs can rely on CI.
 
 ---
@@ -333,8 +336,10 @@ Recurring failure mode in this repo: a committed doc asserts present-tense state
 2. **State the rule, not the derived value.** "500 requests/month per key" survives a second key; "the ceiling is 1000" doesn't.
 3. **Status lives in one place — `PLAN.md`.** Other docs link to it rather than restating it.
 4. **Every PR carries its own `PLAN.md` update, written as post-merge truth.** The status text describes the world after the merge — never "this PR will…" or "pending merge". A PR that changes status without updating `PLAN.md` in the same diff is incomplete.
+5. **Name a version only where it matters.** State a library major, model or runtime version only where it changes how code is written or what the system costs (this file's tech stack, the Haiku model behind `ask_docs`). Elsewhere name the library without its major. Every version a doc does state is checked against the file that pins it by `tests/doc-versions.test.ts`; extend its patterns when a doc names a new one.
+6. **Check a licence clause number against the licence text before citing it** ([Fuel Price Data Licence Terms and Conditions](https://fuelpricesqld.com.au/documents/LimitedUseLicence.pdf)). Clause 2.3 carries two obligations, no further publication and 30-minute / 24-hour currency, so say which one you mean.
 
-Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`).
+Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`, `tests/doc-versions.test.ts`).
 
 ## MCP server subproject (`mcp/` + `infra/`)
 
@@ -347,7 +352,7 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
   `cycle_params.json` bundled at build time) and two docs Q&A tools
   (`search_docs`, `ask_docs`) grounded in a curated corpus of this repo's
   public docs (`mcp/corpus-manifest.txt`) via a Bedrock knowledge base.
-  The only paid call anywhere is `ask_docs` generation (Claude Haiku 4.5
+  The subproject's only paid call is `ask_docs` generation (Claude Haiku 4.5
   via Bedrock), bounded by layered AWS-enforced cost guards (500/month
   gateway quota per key, per-request caps, a budget action that denies
   Bedrock at 100% of a small monthly budget) -- see `docs/mcp-rag-design.md`.
