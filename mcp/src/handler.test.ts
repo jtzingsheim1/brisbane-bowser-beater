@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { APIGatewayProxyEvent } from "aws-lambda";
 import { handler } from "./handler.js";
-import { clearDataCache } from "./data.js";
+import { clearDataCache, stalenessThresholdMinutes } from "./data.js";
 
 function rpcEvent(payload: unknown): APIGatewayProxyEvent {
   return {
@@ -50,11 +50,21 @@ const FORECAST_ROWS = [
   },
 ];
 
-function mockSupabase() {
+// Latest ingestion timestamp the staleness gate reads. Fresh by default;
+// null means nothing has ever been ingested.
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
+function mockSupabase(
+  { ingestedAt = minutesAgo(5) }: { ingestedAt?: string | null } = {},
+) {
   return vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
     const url = String(input);
     let body: unknown;
-    if (url.includes("/rest/v1/rpc/snapshot_event_bound")) {
+    if (url.includes("/rest/v1/rpc/latest_snapshot_ingested_at")) {
+      body = ingestedAt;
+    } else if (url.includes("/rest/v1/rpc/snapshot_event_bound")) {
       // Scalar-returning RPC: PostgREST serialises a bare JSON string.
       body = LATEST_EVENT_ISO;
     } else if (url.includes("/rest/v1/rpc/brisbane_daily_avg_u91")) {
@@ -98,6 +108,7 @@ describe("handler", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("rejects non-POST methods with 405", async () => {
@@ -238,13 +249,15 @@ describe("handler", () => {
   it("reports unavailable when no forecast batch exists", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response("[]", {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
-      ),
+      vi.fn(async (input: string | URL | Request) => {
+        const body = String(input).includes("latest_snapshot_ingested_at")
+          ? JSON.stringify(minutesAgo(5))
+          : "[]";
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
     );
     const result = await callTool("get_forecast");
     const payload = JSON.parse(result.content[0].text);
@@ -275,5 +288,68 @@ describe("handler", () => {
       const headers = init?.headers as Record<string, string>;
       expect(headers.apikey).toBe("test-anon-key");
     }
+  });
+
+  describe("staleness gate", () => {
+    // Licence cl 2.3 currency: once ingestion falls behind, the licensed
+    // tools serve nothing, and never touch the data tables.
+    for (const tool of ["get_forecast", "get_recent_history"]) {
+      it(`${tool} serves nothing when the latest ingestion is too old`, async () => {
+        const fetchMock = mockSupabase({ ingestedAt: minutesAgo(61) });
+        vi.stubGlobal("fetch", fetchMock);
+        const result = await callTool(tool);
+        const payload = JSON.parse(result.content[0].text);
+        expect(payload.status).toBe("unavailable");
+        expect(payload.series).toEqual([]);
+        expect(payload.attribution).toBeUndefined();
+        const urls = fetchMock.mock.calls.map(([u]) => String(u));
+        expect(urls.every((u) => u.includes("latest_snapshot_ingested_at"))).toBe(true);
+      });
+
+      it(`${tool} serves nothing when nothing has been ingested`, async () => {
+        vi.stubGlobal("fetch", mockSupabase({ ingestedAt: null }));
+        const payload = JSON.parse((await callTool(tool)).content[0].text);
+        expect(payload.status).toBe("unavailable");
+      });
+
+      it(`${tool} fails closed when the freshness read fails`, async () => {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => new Response("oops", { status: 500 })),
+        );
+        const res = await handler(
+          rpcEvent(rpc("tools/call", { name: tool, arguments: {} })),
+        );
+        const parsed = JSON.parse(res.body);
+        expect(parsed.result.isError).toBe(true);
+        expect(parsed.result.content[0].text).not.toContain("1.7");
+      });
+    }
+
+    it("honours BBB_STALENESS_MINUTES", async () => {
+      vi.stubEnv("BBB_STALENESS_MINUTES", "360");
+      vi.stubGlobal("fetch", mockSupabase({ ingestedAt: minutesAgo(300) }));
+      const payload = JSON.parse((await callTool("get_forecast")).content[0].text);
+      expect(payload.status).toBe("available");
+    });
+  });
+
+  describe("stalenessThresholdMinutes", () => {
+    it("defaults to 60, ignores invalid values and clamps at 24 h", () => {
+      const cases: [string | undefined, number][] = [
+        [undefined, 60],
+        ["", 60],
+        ["abc", 60],
+        ["0", 60],
+        ["-5", 60],
+        ["360", 360],
+        ["1e308", 1440],
+      ];
+      for (const [raw, expected] of cases) {
+        if (raw === undefined) vi.stubEnv("BBB_STALENESS_MINUTES", undefined);
+        else vi.stubEnv("BBB_STALENESS_MINUTES", raw);
+        expect(stalenessThresholdMinutes(), String(raw)).toBe(expected);
+      }
+    });
   });
 });

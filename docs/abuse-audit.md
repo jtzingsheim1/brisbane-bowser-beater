@@ -73,7 +73,7 @@ noted. Re-check before deploy and whenever the agent surface changes.
 
 ### 10. Data-licence exposure (non-cost, but launch-critical)
 - **Risk:** serving stale licensed data (LUL 2.3) or per-station prices.
-- **Defences:** **staleness gate** renders a maintenance page if the latest ingestion is older than the configured threshold (default 60 min — 2× the 30-min LUL clause; env-tunable via `BBB_STALENESS_MINUTES`, clamped to 24 h max); **aggregate-only** display (no per-station prices anywhere on the public surface); `BBB_PUBLIC` kill switch for instant takedown.
+- **Defences:** **staleness gate** renders a maintenance page if the latest ingestion is older than the configured threshold (default 60 min — 2× the 30-min LUL clause; env-tunable via `BBB_STALENESS_MINUTES`, clamped to 24 h max), and the MCP server's `get_forecast` / `get_recent_history` return no data under the same rule; **aggregate-only** display (no per-station prices anywhere on the public surface); `BBB_PUBLIC` kill switch (flip and redeploy) for takedown.
 - **Residual:** see CLAUDE.md "Operational hygiene" — the off-switch path is deliberate.
 
 ## Pre-deploy checklist (verify at Phase 8)

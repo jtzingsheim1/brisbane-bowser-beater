@@ -47,6 +47,9 @@ jobs:
       TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
       TF_VAR_supabase_anon_key: ${{ vars.SUPABASE_ANON_KEY }}
       TF_VAR_budget_alert_email: ${{ vars.ALERT_EMAIL }}
+      # Optional; mirrors the website's Vercel setting. Unset, the server
+      # defaults to 60.
+      TF_VAR_staleness_minutes: ${{ vars.BBB_STALENESS_MINUTES }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

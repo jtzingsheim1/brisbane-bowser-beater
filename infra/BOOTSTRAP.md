@@ -803,6 +803,10 @@ All of this is in the repo:
    - `SUPABASE_URL` (same value as `NEXT_PUBLIC_SUPABASE_URL`)
    - `SUPABASE_ANON_KEY` (same value as `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 
+   Optionally `BBB_STALENESS_MINUTES`, the same value as the Vercel variable
+   of that name, so the server's staleness gate matches the website's.
+   Unset, both default to 60.
+
    Then four more, for the ungated corpus-sync workflow, also as printed
    by the script (the two ids exist only after the stack's first apply;
    they also appear in the deploy run's "Show outputs" step, and change

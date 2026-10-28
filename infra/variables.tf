@@ -34,6 +34,17 @@ variable "supabase_anon_key" {
   # Public by design, but marked sensitive so it stays out of plan output.
   sensitive = true
 }
+# Staleness gate for get_forecast / get_recent_history (licence cl 2.3
+# currency), the same setting as the website's BBB_STALENESS_MINUTES. Passed
+# through as text and parsed by the server exactly as the site parses it
+# (invalid or unset -> 60, clamped to 1440), so any value Vercel accepts is
+# accepted here. Keep the two in step: set the GitHub variable
+# BBB_STALENESS_MINUTES to the Vercel value.
+variable "staleness_minutes" {
+  description = "BBB_STALENESS_MINUTES for the Lambda; empty means the server default (60)."
+  type        = string
+  default     = ""
+}
 
 # Reserved concurrency for the Lambda. Stays at -1 (no reservation) as a
 # decision, not as a pending task: considered and dropped 2026-08-23 under

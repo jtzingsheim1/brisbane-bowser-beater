@@ -10,7 +10,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getRecentHistory, getLatestForecast } from "./data.js";
+import { getRecentHistory, getLatestForecast, isDataStale } from "./data.js";
 import { getCycleModel } from "./cycle-model.js";
 import {
   askDocs,
@@ -24,7 +24,7 @@ import {
 } from "./rag.js";
 
 export const SERVER_NAME = "brisbane-bowser-beater";
-export const SERVER_VERSION = "0.3.0";
+export const SERVER_VERSION = "0.4.0";
 
 // Attribution depends on where a tool's data comes from (see the site's
 // /about/data page, which carries the same notices).
@@ -100,6 +100,12 @@ function jsonResult(payload: unknown) {
   };
 }
 
+// Returned in place of licensed data when the staleness gate is closed. No
+// attribution: nothing licensed is in it.
+const STALE_MESSAGE =
+  "Live fuel price data is temporarily out of date, so it is not being " +
+  "served. Try again later.";
+
 function errorResult(message: string) {
   return {
     content: [{ type: "text" as const, text: message }],
@@ -128,12 +134,16 @@ export function buildServer(): McpServer {
         "The latest ~30-day Brisbane-area average U91 price forecast: one " +
         "predicted price per day, with an uncertainty band where available. " +
         "Regenerated daily from the observed cycle. Returns " +
-        "status='unavailable' if no forecast batch exists yet.",
+        "status='unavailable' if no forecast batch exists yet, or while " +
+        "the underlying live data is out of date.",
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
       try {
+        if (await isDataStale()) {
+          return jsonResult({ status: "unavailable", message: STALE_MESSAGE, series: [] });
+        }
         const series = await getLatestForecast();
         if (series.length === 0) {
           return jsonResult({
@@ -149,7 +159,10 @@ export function buildServer(): McpServer {
           series,
           attribution: licensedDataAttribution(),
         });
-      } catch {
+      } catch (err) {
+        // Covers the staleness check too, so the gate fails closed. The
+        // caller gets a generic message; the cause goes to CloudWatch.
+        console.error("get_forecast failed:", err);
         return errorResult(
           "The forecast source could not be reached. Try again shortly.",
         );
@@ -165,7 +178,8 @@ export function buildServer(): McpServer {
         "Observed Brisbane-area daily average U91 prices for the past N " +
         "days (7 to 120, default 60), each with the number of stations " +
         "contributing to that day's average. Useful for seeing where the " +
-        "current cycle sits.",
+        "current cycle sits. Returns status='unavailable' while the " +
+        "underlying live data is out of date.",
       inputSchema: {
         days: z
           .number()
@@ -179,14 +193,26 @@ export function buildServer(): McpServer {
     },
     async ({ days }) => {
       try {
+        if (await isDataStale()) {
+          return jsonResult({
+            status: "unavailable",
+            message: STALE_MESSAGE,
+            days_returned: 0,
+            series: [],
+          });
+        }
         const series = await getRecentHistory(days);
         return jsonResult({
+          status: "available",
           days_returned: series.length,
           unit: "AUD per litre",
           series,
           attribution: licensedDataAttribution(),
         });
-      } catch {
+      } catch (err) {
+        // Covers the staleness check too, so the gate fails closed. The
+        // caller gets a generic message; the cause goes to CloudWatch.
+        console.error("get_recent_history failed:", err);
         return errorResult(
           "The history source could not be reached. Try again shortly.",
         );
