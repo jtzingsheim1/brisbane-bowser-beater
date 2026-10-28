@@ -214,7 +214,7 @@ The project should be safe to launch, walk away from, and take down without moni
 - Set `BBB_PUBLIC=false` (immediate visible takedown)
 - Disable the GitHub Actions cron (one click in repo settings)
 - Email QLD per LUL clause 1.5 to terminate the agreement
-- Optionally purge `price_snapshots` / `forecasts` per clause 4.6
+- Stop using `price_snapshots` / `forecasts`: clause 4.6 bars any use of the Licensed Data or derived products after termination, and purging them is the simplest way to show it
 - Purge `usage_monthly_visitors` (disabling the cron also stops its 13-month prune)
 - Optionally take Vercel deployment down
 
@@ -296,15 +296,18 @@ We registered as a *publisher* under the QLD Fuel Price Data Licence (LUL). Mate
 
 | LUL clause | Obligation | How we satisfy it |
 |---|---|---|
-| 2.3 — freshness | Price changes published within 30 min; other data within 24 hr | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly |
-| 2.2 — value-added products | Allowed if Licensed Data is irreversibly transformed or augmented | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
+| 2.3 — publication: no republication | A publisher may publish the data and derived products but must prohibit further publication | `/about/data` says the data may not be republished; MCP `get_forecast` / `get_recent_history` responses carry a no-republication term (PR #164) |
+| 2.3 — publication: currency | What we publish must be current and accurate: price changes within 30 min, other data (locality, address, brand) within 24 hr of a change | GitHub Actions cron polls `/Price/GetSitesPrices` every 30 min; the `sites` table (denormalised brand/suburb/state) refreshed weekly; the staleness gate (see "Operational hygiene") takes the site down rather than publish stale data |
+| 2.2 — value-added products | Allowed if the Licensed Data's form is irreversibly changed, or it is augmented or combined with other data | We display **Brisbane-wide aggregate average only** — irreversible transformation from per-station feed |
 | 4.2 / 4.3 — attribution | Two verbatim notices required (raw-data + derived-product) | Both notices appear verbatim on `/about/data` page, linked from footer on every page |
-| 4.4 — provenance | Distinguish QLD data from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
+| 4.4 — provenance | Distinguish data sourced from the Licensor from other sources | App copy explicitly cites "QLD Fuel Price Reporting" and "QLD open-data CSV" where each is used |
 | 4.8 — usage data | Active/new/returning users per month, with region split, on request within 10 business days | Server-side aggregate counts from request logs + IP-region lookup. No cookies, no behavioural tracking. Reconcilable with privacy/trust pane — see operational note below |
 | 5.x — audit | Cooperate with reasonable Licensor audits | Document our data flow in `/about/data` and code comments; aggregate logs available if requested |
+| 2.4 / 3.1 — third parties | No distribution to third parties beyond cl 2.3 publication; providing data to a third party *to publish* needs the Licensor's written approval | Our reading: everything we serve, site and MCP alike, is our own cl 2.3 publication, carrying the no-republication term, and no third party is given data to publish. If the Licensor ever reads MCP access as supplying third parties to publish, cl 2.4 approval would be needed |
+| 4.7 — no endorsement | Don't imply the Licensor endorses or is connected with us; no Queensland Government logos or marks | Footer and `/about/data` state the site is not affiliated with or endorsed by the Queensland Government; no government marks used |
 | 6.3 — indemnity | We indemnify Licensor for our use | Standard. Footer disclaimer + forecast/estimate framing already minimise our exposure |
 | 1.4 — fee | $1 on demand | Symbolic. Pay if asked. |
-| 1.5 — termination | Either side, 20 business days notice (3 days if our publication is "not current or accurate") | The operational off-switch (see "Operational hygiene") gives us a clean wind-down path |
+| 1.5 — termination | Either side, 20 business days' notice; the Licensor may give 3 business days' notice if our publication is not current or accurate (or we are in breach) and we haven't corrected it within 3 business days of being told | The operational off-switch (see "Operational hygiene") gives us a clean wind-down path |
 
 **Privacy/trust pane reconciliation**: the pane's visitor-count bullet and the `/privacy` page state the cl 4.8 counting openly (a salted IP hash per visitor per month, pruned after 13 months by `src/lib/retention.ts`). No cookies, no client JS, no third-party analytics.
 
@@ -333,7 +336,7 @@ Recurring failure mode in this repo: a committed doc asserts present-tense state
 3. **Status lives in one place — `PLAN.md`.** Other docs link to it rather than restating it.
 4. **Every PR carries its own `PLAN.md` update, written as post-merge truth.** The status text describes the world after the merge — never "this PR will…" or "pending merge". A PR that changes status without updating `PLAN.md` in the same diff is incomplete.
 5. **Name a version only where it matters.** State a library major, model or runtime version only where it changes how code is written or what the system costs (this file's tech stack, the Haiku model behind `ask_docs`). Elsewhere say "Next.js", not "Next.js 16". Every version a doc does state is checked against the file that pins it by `tests/doc-versions.test.ts`; extend its patterns when a doc names a new one.
-6. **Cite a licence clause by number only after checking it against the licence text.** A clause number cited from memory is how one number came to stand for two different obligations.
+6. **Check a licence clause number against the licence text before citing it** ([Fuel Price Data Licence Terms and Conditions](https://fuelpricesqld.com.au/documents/LimitedUseLicence.pdf)). Clause 2.3 carries two obligations, no further publication and 30-minute / 24-hour currency, so say which one you mean.
 
 Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`, `tests/doc-versions.test.ts`).
 
