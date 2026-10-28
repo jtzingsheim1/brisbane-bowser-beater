@@ -173,7 +173,7 @@ answer with citations back to the files it came from. The corpus is a
 curated allowlist of this repo's public docs, not a glob — internal working
 notes are excluded, and a test enforces that.
 
-Generation is the only paid call anywhere in the project, so it sits behind
+Generation is the MCP server's only paid call, so it sits behind
 layered guards that AWS itself enforces rather than the code: a monthly
 request quota on the API key, per-request caps (input length, retrieved
 chunks, output tokens, single attempt with no retries), and a budget action

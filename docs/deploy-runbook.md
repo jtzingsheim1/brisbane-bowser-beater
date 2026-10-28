@@ -57,7 +57,7 @@ Then temporarily set `BBB_PUBLIC=true` and check:
 Cross-check against [`abuse-audit.md`](abuse-audit.md) → "Pre-deploy checklist".
 
 ## 4. Go live
-- Set `BBB_PUBLIC=true` (takes effect on the next request — no redeploy).
+- Set `BBB_PUBLIC=true` and redeploy (Vercel env var changes reach only new deployments).
 - Confirm the live URL serves the real page.
 
 ## 5. The off-switch (for later)
@@ -104,7 +104,7 @@ live keys never enter a repo, a session, or a log:
    session ID — that's the reconciliation loop closed. Check the row holds
    only opaque IDs — no name, no email.
 
-**Test-mode rehearsal (optional, on a preview deployment):** set the three vars
+**Test-mode rehearsal (optional, on a preview deployment):** set the vars above
 on the Preview environment with **test-mode** values, register a webhook for the
 preview URL (or run `stripe listen --forward-to <preview>/api/stripe/webhook`),
 and pay with card `4242 4242 4242 4242`. Same verification as step 6.

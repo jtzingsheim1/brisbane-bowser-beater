@@ -8,7 +8,7 @@ A single-page web app for Brisbane drivers, combining live fuel price data with 
 
 Australian retail fuel prices in major capital cities exhibit recurring cycles that have been studied by the ACCC, which publishes regular [fuel and petrol monitoring reports](https://www.accc.gov.au/by-industry/petrol-and-fuel/fuel-and-petrol-monitoring). The cycles are not closely correlated with wholesale price movements. The specific characteristics of the **current** Brisbane cycle — period, amplitude, asymmetry, shape, regularity, typical station spread — are what this project's Phase 2 characterisation measures from QLD Fuel Price Reporting API data.
 
-**Measured characterisation (Phase 2, landed 2026-05).** The offline Python pipeline in `/analysis/` characterised the cycle from ~35 months of QLD open-data CSVs (2023-03 → 2026-02, Brisbane core-Metro U91, 20 cycles after excluding 64d+ merges). Observation-only figures, now the source of truth in `analysis/output/cycle_params.json`:
+**Measured characterisation (Phase 2, landed 2026-05).** The offline Python pipeline in `/analysis/` characterised the cycle from ~35 months of QLD open-data CSVs (2023-03 → 2026-02, Brisbane core-Metro U91, 20 cycles after excluding periods over 55 days as missed-trough merges). Observation-only figures, now the source of truth in `analysis/output/cycle_params.json`:
 
 - **Cycle length** ~39 days (recency-weighted; inter-cycle range ~31–46).
 - **Swing** ~$0.35/L trough-to-peak, stable across all three years.
@@ -109,7 +109,7 @@ Six bullets, plain language, lightly cheeky. Positioned so users see it *before*
 - We don't store what you type. It goes to Anthropic to generate your plan, then it's gone on our side. (Anthropic's terms apply to their bit.)
 - No third-party analytics and no cookies that follow you around. We count monthly visitors with a salted hash of your IP address, because our data licence asks for usage numbers.
 - Caching is anonymous. Same situation gets the same plan — we keep the plan for up to 30 days under a hash of your inputs, never the inputs themselves.
-- Only the planner is AI. The forecast chart is deterministic.
+- Only the agent is AI. The forecast chart is deterministic.
 - It's all on GitHub. Don't trust this list? Read the code.
 
 Below the bullets, one line links to the `/privacy` page for the full details and retention periods.
@@ -168,7 +168,7 @@ Split into three stages:
 
 Bootstrapped from historical inter-cycle variance — avoids cold-start of using residuals from past forecasts. Falls back to point-only forecast if implementation gets fiddly inside the time budget.
 
-User-facing one-liner near the chart:
+One-liner explaining the band (README "How the forecast works"; the chart itself doesn't show it):
 
 > *"Best guess in the middle. The band shows the range past cycles have moved within — actual prices usually land somewhere inside it."*
 
@@ -179,7 +179,7 @@ Long-form methodology lives in README "How the forecast works" section (Phase 7)
 - `/analysis/*.py` — Python scripts (own venv), exploratory but version-control-friendly: `download_data.py` (cache QLD CSVs), `cycle_lib.py` (load + daily series), `cycle_fit.py` (detrend/detect/canonical), `trend_check.py` (drift test), `build_params.py` (finalise). No notebook — deliberate (clean git diffs).
 - `/analysis/output/cycle_params.json` — committed artifact, the contract between Python and TS
 - `/analysis/output/history_daily.json` + `cycle_shapes.json` — committed artifacts behind the public cycle visuals (education charts, README images, OG card), emitted by `analysis/figures.py` pinned to the committed fit; `src/lib/history/artifacts.test.ts` fails the build if they drift from `cycle_params.json`
-- `/lib/forecast/` — TS production code, reads the JSON, knows nothing about Python
+- `src/lib/forecast/` — TS production code, reads the JSON, knows nothing about Python
 - Vercel runtime is pure TS — Python never runs on the server
 
 ---
@@ -240,7 +240,6 @@ The first two are instant; the rest can be done at leisure without licence panic
 | Tests beyond happy path + cost-control | Pragmatic coverage |
 | SEO / analytics / error monitoring | Out |
 | "Explain the cycle" 5th starter chip | Backlog — interesting but not MVP |
-| Long-form privacy page | Only if ever needed |
 | **Section 2: per-station price list with postcode search** | Cut — materially expands publisher-licence exposure (per-station attribution + 30-min freshness), and the cycle/agent in Section 1 carries the differentiated value. Per-station lookups already well-served by PetrolSpy etc. Backlog candidate for post-MVP. |
 
 ### Knowingly temporary (documented in README roadmap)
@@ -318,9 +317,9 @@ Most conventions inherit from the global standards. Project-specific notes:
 - `cycle_params.json` is the contract between the Python analysis scripts and TS production code. Versioned in git. Schema documented inline in `analysis/build_params.py` and mirrored in `src/lib/forecast/types.ts`. The manually-authored `anomaly_notes` block (added for the Feb–Apr 2026 anomaly, issue #47 PR-3) is written by hand into the JSON; re-author on every quarterly re-fit since the Python pipeline doesn't generate it.
 - Agent system prompt encodes the Brisbane cycle context AND chip-cell awareness (including the C-cell road-trip variant).
 - No PII written to Supabase. Caches keyed on hashes of inputs, not raw inputs.
-- Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `/lib/forecast/` is TS-only.
+- Forecast model code never mixes Python and TS in the same directory — `/analysis/` is Python-only, `src/lib/forecast/` is TS-only.
 - Agent responses stream tool calls visibly to the user — part of the product's transparency story.
-- **Supabase tables need explicit GRANTs.** The project's "Automatically expose new tables" setting is OFF (deliberate — explicit control over the Data API surface). Every new table needs `grant select on <table> to anon` and `grant all on <table> to service_role` in its migration. Migration 0004 sets `alter default privileges` for future tables, but verify each migration grants explicitly as belt-and-braces — default privileges only cover tables created by the same role that ran the ALTER, which may not be the role running future migrations.
+- **Supabase tables need explicit GRANTs.** The project's "Automatically expose new tables" setting is OFF (deliberate — explicit control over the Data API surface). Every new table needs `grant all on <table> to service_role` in its migration, plus `grant select on <table> to anon` only if it is a public display table (`forecasts`, `daily_narrative`); internal tables (`sites`, `price_snapshots`, `agent_plans`, `usage_monthly_visitors`, `tip_ledger`) get no anon access, and `revoke all on <table> from anon` where default privileges would otherwise grant it. Migration 0004 sets `alter default privileges` for future tables, but verify each migration grants explicitly as belt-and-braces — default privileges only cover tables created by the same role that ran the ALTER, which may not be the role running future migrations.
 - **Run the checks before opening a code PR.** For any PR that changes code, run `npm run lint`, `npm test` and `npm run build` locally first (and `npm run check` in `mcp/` for that subproject). Doc- and config-only PRs can rely on CI.
 
 ---
@@ -349,7 +348,7 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
   `cycle_params.json` bundled at build time) and two docs Q&A tools
   (`search_docs`, `ask_docs`) grounded in a curated corpus of this repo's
   public docs (`mcp/corpus-manifest.txt`) via a Bedrock knowledge base.
-  The only paid call anywhere is `ask_docs` generation (Claude Haiku 4.5
+  The subproject's only paid call is `ask_docs` generation (Claude Haiku 4.5
   via Bedrock), bounded by layered AWS-enforced cost guards (500/month
   gateway quota per key, per-request caps, a budget action that denies
   Bedrock at 100% of a small monthly budget) -- see `docs/mcp-rag-design.md`.

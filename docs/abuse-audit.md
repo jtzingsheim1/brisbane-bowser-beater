@@ -17,7 +17,7 @@ noted. Re-check before deploy and whenever the agent surface changes.
 |---|---|---|
 | 1 | Hard Anthropic spend cap (manual) | Anthropic console |
 | 2 | Per-IP rate limit (10 / 60 s) | `src/lib/rate-limit.ts` (Upstash) |
-| 3 | Aggressive caching of repeatable work | `unstable_cache` on aggregates/forecast/narrative; forecast precomputed by cron |
+| 3 | Aggressive caching of repeatable work | `unstable_cache` on aggregates/forecast/narrative; forecast precomputed by cron; agent plans cached per `(situation_hash, day)` in `src/lib/agent/plan-cache.ts` |
 | 4 | BYO-key override | `x-anthropic-key` header in the agent route |
 | 5 | Max output tokens (1500) + max agent steps (6) | `src/app/api/agent/route.ts` |
 | 6 | Strict input validation (msg count, total chars, JSON guard) | agent route |
@@ -29,7 +29,7 @@ noted. Re-check before deploy and whenever the agent surface changes.
 ### 1. Rate-limit bypass via rotating IPs / VPN / proxy
 - **Risk:** an attacker cycles IPs to evade the per-IP limit and drive agent calls.
 - **Defences:** per-IP sliding window (layer 2) raises the cost of casual abuse; **max output tokens + max steps (layer 5)** cap the spend of *each individual* call regardless of who makes it; the **hard spend cap (layer 1)** bounds the absolute monthly worst case. Aggressive caching (layer 3) means repeated identical situations are cheap.
-- **Residual:** a determined, IP-rotating attacker can still burn calls up to the spend cap. Accepted — the spend cap is the deliberate ceiling. Plan caching by `(situation_hash, day)` (Phase 4 backlog) would further blunt this.
+- **Residual:** a determined, IP-rotating attacker can still burn calls up to the spend cap. Accepted — the spend cap is the deliberate ceiling. Plan caching by `(situation_hash, day)` (`src/lib/agent/plan-cache.ts`) blunts this further: a repeated situation replays the cached plan instead of making a new call.
 
 ### 2. Cache bypass via random query parameters
 - **Risk:** appending random query strings to defeat caches and force recompute.
