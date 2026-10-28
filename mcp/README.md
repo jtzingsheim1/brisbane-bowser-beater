@@ -287,7 +287,10 @@ terraform init -backend=false && terraform validate
 prices from the QLD Fuel Price Reporting API, which this project uses as a
 registered publisher under the State of Queensland's Fuel Price Data Licence.
 Their responses carry that licence's attribution notice, and that data and
-anything derived from it may not be republished.
+anything derived from it may not be republished. The licence also requires
+published data to be current, so both tools return `status: "unavailable"`
+and no data once the latest ingestion is older than `BBB_STALENESS_MINUTES`
+(default 60, at most 1440), the same gate and setting the website uses.
 
 `get_cycle_model` is fitted from the QLD open-data CSVs only: "Fuel Price
 Reporting" by the State of Queensland (Queensland Treasury),

@@ -94,6 +94,8 @@ resource "aws_lambda_function" "server" {
     variables = {
       SUPABASE_URL      = var.supabase_url
       SUPABASE_ANON_KEY = var.supabase_anon_key
+      # Staleness gate for the licensed-data tools (mcp/src/data.ts).
+      BBB_STALENESS_MINUTES = tostring(var.staleness_minutes)
       # RAG tools (see infra/rag.tf); the server skips registering them
       # when these are absent.
       BBB_KB_ID         = aws_bedrockagent_knowledge_base.docs.id

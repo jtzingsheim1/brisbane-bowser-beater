@@ -38,7 +38,7 @@ needs a code change.
 | `KV_REST_API_URL` | ◻ | auto-injected by the Vercel Upstash Marketplace integration; the limiter reads this (or `UPSTASH_REDIS_REST_URL` as fallback) |
 | `KV_REST_API_TOKEN` | ◻ | auto-injected; the read-write token. The limiter writes counters, so the read-only token won't work |
 | `BBB_PUBLIC` | ✅ | **leave `false` for now** — see step 4 |
-| `BBB_STALENESS_MINUTES` | ◻ | optional override for the staleness gate (default 60). Raise it (e.g. `360`) to ride out GitHub Actions cron lag — the chart shows a *daily* aggregate, so hours of intraday lag don't change what's displayed. Set very high to effectively disable the gate. |
+| `BBB_STALENESS_MINUTES` | ◻ | optional override for the staleness gate (default 60). Raise it (e.g. `360`) to ride out GitHub Actions cron lag — the chart shows a *daily* aggregate, so hours of intraday lag don't change what's displayed. Values above 1440 (24 h) are clamped to 1440. The MCP server applies the same gate; set the GitHub variable `BBB_STALENESS_MINUTES` to the same value (see `infra/BOOTSTRAP.md`). |
 
 - Deploy.
 

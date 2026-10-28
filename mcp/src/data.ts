@@ -22,6 +22,17 @@ const FETCH_TIMEOUT_MS = 6_000;
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cache = new Map<string, { at: number; value: unknown }>();
 
+// Staleness gate, mirroring the website's (src/lib/freshness.ts): the licence
+// (cl 2.3) requires what we publish to be current, so the two tools that serve
+// licensed data return nothing once the latest ingestion is older than the
+// threshold. Same env var, default and clamp as the site; the Lambda gets it
+// from Terraform (infra/lambda.tf). The freshness read is cached for a minute,
+// far shorter than the data cache, so the gate reacts promptly.
+const FALLBACK_STALENESS_MINUTES = 60;
+const MAX_STALENESS_MINUTES = 1440; // 24 h; beyond this, "stale" is meaningless
+const FRESHNESS_TTL_MS = 60 * 1000;
+let freshness: { at: number; latest: string | null } | null = null;
+
 export type DailyPoint = {
   day: string;
   avg_price: number;
@@ -148,7 +159,31 @@ export async function getLatestForecast(): Promise<ForecastPoint[]> {
   });
 }
 
-// Test hook: clears the warm-container cache between test cases.
+export function stalenessThresholdMinutes(): number {
+  const raw = Number(process.env.BBB_STALENESS_MINUTES);
+  if (!Number.isFinite(raw) || raw <= 0) return FALLBACK_STALENESS_MINUTES;
+  return Math.min(raw, MAX_STALENESS_MINUTES);
+}
+
+// True when the latest ingestion is older than the threshold, or when there
+// has never been one. A failed read throws, and the tools treat that as
+// unavailable too: the gate fails closed.
+export async function isDataStale(now: number = Date.now()): Promise<boolean> {
+  if (!freshness || now - freshness.at >= FRESHNESS_TTL_MS) {
+    // Security-definer RPC (migration 0013), the same one the site's gate reads.
+    const latest = (await rest(env(), "rpc/latest_snapshot_ingested_at", {
+      method: "POST",
+      body: {},
+    })) as string | null;
+    freshness = { at: now, latest };
+  }
+  if (!freshness.latest) return true;
+  const ageMinutes = (now - new Date(freshness.latest).getTime()) / 60_000;
+  return !(ageMinutes <= stalenessThresholdMinutes());
+}
+
+// Test hook: clears the warm-container caches between test cases.
 export function clearDataCache(): void {
   cache.clear();
+  freshness = null;
 }
