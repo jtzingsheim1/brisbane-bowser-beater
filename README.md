@@ -140,10 +140,10 @@ licence requires.
 
 | Layer | Choice |
 |---|---|
-| Framework | Next.js 16 (App Router, RSC) + React 19 + TypeScript (strict) |
-| UI / charts | Tailwind v4 + Recharts |
+| Framework | Next.js (App Router, RSC) + React + TypeScript (strict) |
+| UI / charts | Tailwind + Recharts |
 | Database | Supabase (Postgres) — aggregate display tables, RLS-protected |
-| AI | Vercel AI SDK v6 + Anthropic Claude (agent only) |
+| AI | Vercel AI SDK + Anthropic Claude (agent only) |
 | Data pipeline | GitHub Actions (30-min ingest, weekly site refresh, daily forecast + narrative) → Supabase |
 | Hosting | Vercel |
 

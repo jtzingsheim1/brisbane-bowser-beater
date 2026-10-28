@@ -143,7 +143,7 @@ Concrete, dated, with reasoning. Example:
 | UI | React 19 (strict) + TypeScript (strict mode) |
 | Database | Supabase (Postgres) |
 | Deployment | Vercel (hosting) + GitHub Actions (cron — free for public repos, keeps Vercel Hobby clean) |
-| AI orchestration | Vercel AI SDK v6 |
+| AI orchestration | Vercel AI SDK v7 |
 | LLM | Anthropic Claude API (direct, via `@ai-sdk/anthropic`) |
 | Rate limiting | Upstash Redis (Vercel marketplace free tier) |
 | Charting | Recharts |
@@ -333,8 +333,10 @@ Recurring failure mode in this repo: a committed doc asserts present-tense state
 2. **State the rule, not the derived value.** "500 requests/month per key" survives a second key; "the ceiling is 1000" doesn't.
 3. **Status lives in one place — `PLAN.md`.** Other docs link to it rather than restating it.
 4. **Every PR carries its own `PLAN.md` update, written as post-merge truth.** The status text describes the world after the merge — never "this PR will…" or "pending merge". A PR that changes status without updating `PLAN.md` in the same diff is incomplete.
+5. **Name a version only where it matters.** State a library major, model or runtime version only where it changes how code is written or what the system costs (this file's tech stack, the Haiku model behind `ask_docs`). Elsewhere say "Next.js", not "Next.js 16". Every version a doc does state is checked against the file that pins it by `tests/doc-versions.test.ts`; extend its patterns when a doc names a new one.
+6. **Cite a licence clause by number only after checking it against the licence text.** A clause number cited from memory is how one number came to stand for two different obligations.
 
-Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`).
+Two carve-outs: operator runbooks (`infra/BOOTSTRAP.md`) keep their "already done on the live account" markers — they exist precisely so an operator doesn't redo a paste; and present-tense state is fine where a test enforces it (`src/lib/history/artifacts.test.ts`, `tests/infra-boundaries.test.ts`, `tests/corpus-sync-workflow.test.ts`, `tests/doc-versions.test.ts`).
 
 ## MCP server subproject (`mcp/` + `infra/`)
 
