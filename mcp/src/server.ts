@@ -159,7 +159,10 @@ export function buildServer(): McpServer {
           series,
           attribution: licensedDataAttribution(),
         });
-      } catch {
+      } catch (err) {
+        // Covers the staleness check too, so the gate fails closed. The
+        // caller gets a generic message; the cause goes to CloudWatch.
+        console.error("get_forecast failed:", err);
         return errorResult(
           "The forecast source could not be reached. Try again shortly.",
         );
@@ -206,7 +209,10 @@ export function buildServer(): McpServer {
           series,
           attribution: licensedDataAttribution(),
         });
-      } catch {
+      } catch (err) {
+        // Covers the staleness check too, so the gate fails closed. The
+        // caller gets a generic message; the cause goes to CloudWatch.
+        console.error("get_recent_history failed:", err);
         return errorResult(
           "The history source could not be reached. Try again shortly.",
         );

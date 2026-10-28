@@ -12,8 +12,9 @@
 const FUEL_NAME = "Unleaded";
 const FORECAST_REGION = "brisbane_metro";
 // Budgeted against the Lambda's 25s timeout: the two tools that hit Supabase
-// make two sequential fetches, so 2 x 6s = 12s worst case leaves room for
-// the graceful try/catch to run before the function is killed.
+// make up to three sequential fetches (the staleness check, then two data
+// reads), so 3 x 6s = 18s worst case leaves room for the graceful try/catch
+// to run before the function is killed.
 const FETCH_TIMEOUT_MS = 6_000;
 
 // Per-warm-container response cache. The site caches these same reads for an

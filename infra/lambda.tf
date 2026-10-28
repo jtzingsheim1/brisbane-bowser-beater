@@ -77,8 +77,8 @@ resource "aws_lambda_function" "server" {
   architectures    = ["arm64"]
 
   memory_size = 256
-  # 25s leaves headroom over the data layer's worst cases (two sequential
-  # 6s upstream fetches = 12s; one ask_docs RetrieveAndGenerate round trip
+  # 25s leaves headroom over the data layer's worst cases (three sequential
+  # 6s upstream fetches = 18s: the staleness check, then two data reads; one ask_docs RetrieveAndGenerate round trip
   # with a 500-token generation cap) so an upstream stall degrades to a
   # graceful tool error rather than a hard Lambda kill, while staying
   # under API Gateway's 29s integration limit.
@@ -91,16 +91,19 @@ resource "aws_lambda_function" "server" {
   reserved_concurrent_executions = var.lambda_reserved_concurrency
 
   environment {
-    variables = {
-      SUPABASE_URL      = var.supabase_url
-      SUPABASE_ANON_KEY = var.supabase_anon_key
-      # Staleness gate for the licensed-data tools (mcp/src/data.ts).
-      BBB_STALENESS_MINUTES = tostring(var.staleness_minutes)
-      # RAG tools (see infra/rag.tf); the server skips registering them
-      # when these are absent.
-      BBB_KB_ID         = aws_bedrockagent_knowledge_base.docs.id
-      BBB_RAG_MODEL_ARN = local.rag_profile_arn
-    }
+    variables = merge(
+      {
+        SUPABASE_URL      = var.supabase_url
+        SUPABASE_ANON_KEY = var.supabase_anon_key
+        # RAG tools (see infra/rag.tf); the server skips registering them
+        # when these are absent.
+        BBB_KB_ID         = aws_bedrockagent_knowledge_base.docs.id
+        BBB_RAG_MODEL_ARN = local.rag_profile_arn
+      },
+      # Staleness gate for the licensed-data tools (mcp/src/data.ts). Left
+      # out when unset, so the server's own default (60) applies.
+      var.staleness_minutes == "" ? {} : { BBB_STALENESS_MINUTES = var.staleness_minutes },
+    )
   }
 
   depends_on = [aws_cloudwatch_log_group.server]

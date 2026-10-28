@@ -34,6 +34,17 @@ variable "supabase_anon_key" {
   # Public by design, but marked sensitive so it stays out of plan output.
   sensitive = true
 }
+# Staleness gate for get_forecast / get_recent_history (licence cl 2.3
+# currency), the same setting as the website's BBB_STALENESS_MINUTES. Passed
+# through as text and parsed by the server exactly as the site parses it
+# (invalid or unset -> 60, clamped to 1440), so any value Vercel accepts is
+# accepted here. Keep the two in step: set the GitHub variable
+# BBB_STALENESS_MINUTES to the Vercel value.
+variable "staleness_minutes" {
+  description = "BBB_STALENESS_MINUTES for the Lambda; empty means the server default (60)."
+  type        = string
+  default     = ""
+}
 
 # Reserved concurrency for the Lambda. Stays at -1 (no reservation) as a
 # decision, not as a pending task: considered and dropped 2026-08-23 under
@@ -50,21 +61,6 @@ variable "supabase_anon_key" {
 # See docs/mcp-rag-design.md, cost guards layer 2, for the two caveats
 # kept against this. Revisit only if the quota is raised substantially,
 # many more keys are added, or a second function joins the account.
-# Staleness gate for get_forecast / get_recent_history (licence cl 2.3
-# currency), the same setting as the website's BBB_STALENESS_MINUTES. Keep
-# the two in step: set the GitHub variable BBB_STALENESS_MINUTES to the
-# Vercel value; unset, both default to 60.
-variable "staleness_minutes" {
-  description = "Minutes since the latest ingestion before the licensed-data tools stop serving."
-  type        = number
-  default     = 60
-
-  validation {
-    condition     = var.staleness_minutes > 0 && var.staleness_minutes <= 1440
-    error_message = "staleness_minutes must be between 1 and 1440 (24 h), matching the server's clamp."
-  }
-}
-
 variable "lambda_reserved_concurrency" {
   description = "Lambda reserved concurrent executions (-1 = unreserved)."
   type        = number
