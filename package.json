@@ -17,11 +17,11 @@
     "dev:fresh": "node --env-file=.env.local scripts/touch-freshness.mjs --force && next dev"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.88",
-    "@ai-sdk/react": "^4.0.157",
+    "@ai-sdk/anthropic": "^4.0.94",
+    "@ai-sdk/react": "^4.0.163",
     "@supabase/supabase-js": "^2.118.0",
     "@upstash/ratelimit": "^2.2.0",
-    "@upstash/redis": "^1.39.0",
+    "@upstash/redis": "^1.40.0",
     "ai": "^7.0.16",
     "next": "16.4.3",
     "react": "19.3.1",
@@ -29,7 +29,7 @@
     "react-markdown": "^10.1.0",
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
-    "stripe": "^23.0.1",
+    "stripe": "^23.1.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
