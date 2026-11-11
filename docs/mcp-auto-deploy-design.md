@@ -179,7 +179,9 @@ What lands where:
   reads the current values and lowers them through Service Quotas only if
   the worst case they allow exceeds the backstop's monthly limit (D4).
 - **The backstop doesn't re-arm itself.** Once it fires, the deny stays
-  until a human resets it (BOOTSTRAP "If the backstop ever fires"). While
+  until a human resets it (BOOTSTRAP "If the backstop ever fires":
+  reverse the action, which detaches through the action's own role,
+  with a manual detach as the fallback). While
   it is applied, the update role cannot write Terraform state, so every
   deploy hits AccessDenied on the unattended path and routes to the gated
   one: one approval per deploy until the reset. The deploy role is not a
@@ -192,7 +194,12 @@ What lands where:
 
 Concurrency at workflow level (`group: mcp-deploy`,
 `cancel-in-progress: false`), so a burst of merges collapses to the
-newest pending run, and jobs from different runs never interleave. The
+newest pending run, and jobs from different runs never interleave. A
+dispatched `plan` runs in its own group (`mcp-deploy-plan`): a group holds
+one pending run, so a plan sharing the deploy group could cancel a push
+deploy queued behind a running one. A plan applies nothing, so it may run
+beside a deploy; Terraform's state lock keeps their state access apart.
+Apply and destroy dispatches share the deploy group. The
 run name carries the action (`Deploy MCP stack (<action>)`, `push` for a
 push), because the runs API does not expose dispatch inputs and the
 Dependabot skill's wait script needs to tell dispatched plan and destroy
@@ -218,7 +225,13 @@ Jobs:
       `qualified_arn`, `qualified_invoke_arn` and `version` only as
       unknown-after-apply churn), and `tags_all` on the resource types
       the update role may tag. A plan that changes outputs only is
-      routine; one with no changes is `noop`.
+      routine; one with no changes is `noop`. A resource change with a
+      `previous_address` (a move) is gated whatever its actions, checked
+      before them, so an update that also moves never passes as routine.
+      A type with write-only attributes never joins the allow-list:
+      plan JSON shows them as null, so their changes are invisible. A
+      plan file that does not parse fails the step with a fixed message
+      that quotes none of its content.
    3. Routine: apply the saved plan, then the smoke test. Noop: the smoke
       test only. Anything else, or an AccessDenied during plan or apply,
       sets `route=gated` and writes the summary to the job summary. A
@@ -234,8 +247,12 @@ Jobs:
    has not fired.
 4. **notify-gated**: runs beside `deploy-gated` while it waits, and opens
    or comments on the `mcp-deploy` issue (5.5). `issues: write`, no AWS.
-5. **report**: after the rest; on a failure it opens or comments on the
-   issue, and after a successful deploy it closes open ones.
+   A dispatched `destroy` waiting for approval opens no issue: the
+   maintainer started it.
+5. **report**: after every other job, `notify-gated` included, so a
+   rejected approval cannot race `notify-gated` into a second issue and a
+   failed notification is reported. On a failure it opens or comments on
+   the issue, and after a successful deploy it closes open ones.
    `issues: write`, no AWS.
 
 Routine deploys never sync the corpus: a routine plan can change only the
@@ -280,8 +297,9 @@ exercise the handler with real MCP requests.
 - Pushes made through the Claude GitHub App email nobody when a run
   fails. So a failing or gated run opens (or comments on) the issue "MCP
   deploy needs attention", labelled `mcp-deploy` and assigned to the
-  repository owner, so GitHub emails it. A later successful deploy closes
-  it. Only `notify-gated` and `report` hold `issues: write`, and neither
+  repository owner, so GitHub emails it (if the assignment is refused,
+  the issue is opened unassigned rather than not at all). A later
+  successful deploy closes it. Only `notify-gated` and `report` hold `issues: write`, and neither
   holds AWS credentials.
 - A gated run waiting for approval blocks later deploys in the
   concurrency group. The issue says so, and so does the weekly report.
@@ -301,7 +319,10 @@ exercise the handler with real MCP requests.
   3. returns early, with the link, when a run waits for approval;
   4. reports "nothing to deploy" when no merge touched the paths.
 
-  It never reports a cancelled-as-superseded run as the outcome.
+  It never reports a cancelled-as-superseded run as the outcome. A
+  cancelled run counts as superseded only when a newer deploying run (a
+  push or a dispatched `apply`) exists; a later dispatched `plan` or
+  `destroy` supersedes nothing.
 - At session start the skill lists open `mcp-deploy` issues.
 - The "a shipped `mcp/` fix only reaches the Lambda at the next
   `mcp-deploy` run" guidance went.
@@ -413,7 +434,9 @@ changed: Terraform creates two roles, and BOOTSTRAP hand-makes four
 
 Decommissioning gained required steps (licence cl 4.6: a later merge must
 not rebuild a decommissioned stack): detach the backstop deny in
-CloudShell before `destroy`, delete both deploy roles and disable the
+CloudShell before `destroy` (required if it has fired, since IAM will
+not delete a role with it attached; the role and policy deletions also
+detach first), delete both deploy roles and disable the
 workflow after it, then delete the backstop resources.
 
 ## 9. Migration
@@ -422,6 +445,11 @@ The runbook is `infra/BOOTSTRAP.md`, "Update for auto-deploy". The live
 account stays protected throughout: additive first, then forget, then
 narrow. What the maintainer runs:
 
+0. **Before Paste A, CloudShell**: read the old budget's live limit and
+   month-to-date actual spend. A new action on a budget already past
+   100% fires within hours, with a wider deny than the old one, so
+   `BACKSTOP_LIMIT_USD` must sit above month-to-date spend (or Paste A
+   waits for the month to roll over).
 1. **Before merge, CloudShell, Paste A**: the Step 3 script with
    `DEPLOY_ROLE_STAGE="transition"`. It creates the update role, arms the
    `bbb-backstop-*` resources alongside the old backstop, narrows the
@@ -433,14 +461,19 @@ narrow. What the maintainer runs:
    values (lower them only per D4); create `aws-gated`; add the
    `AWS_UPDATE_ROLE_ARN` variable; protect main (D2).
 3. **Merge.** `aws` still has its reviewer, so the push run asks for
-   approval of the update-role job. Its plan cannot read the old
-   backstop, so it routes to `deploy-gated`, a second approval, which
+   approval of the update-role job. It routes to `deploy-gated` either
+   way: its plan hits AccessDenied reading the old backstop, or the
+   classifier gates the `forget` actions. That is a second approval,
+   which
    forgets the old backstop (`removed` blocks in `infra/rag.tf`). Two
    taps, once.
-4. **After merge, CloudShell, Paste B**: delete the old backstop
-   (detach the old deny if it was ever applied; the budget action, then
-   the budget; the old action role's policy, then the role; the old deny
-   policy), then re-paste the Step 3 script with
+4. **After merge, CloudShell, Paste B**, only once the gated run has
+   succeeded and listed the five `forget` lines; the paste re-checks the
+   Terraform state for them and stops if any remains. It deletes the old
+   backstop (the budget action first, so it cannot fire mid-cleanup, then
+   the budget; then the old deny's attachments, if it was ever applied;
+   the old action role's policy, then the role; the old deny policy),
+   then re-paste the Step 3 script with
    `DEPLOY_ROLE_STAGE="final"`, which replaces the deploy role's policy
    with the narrowed one plus the Denies and rewrites its trust to the
    `aws-gated` subject only.

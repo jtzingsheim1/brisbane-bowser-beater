@@ -12,9 +12,12 @@
 #   3 FAILED <url>               the newest run for that commit or later failed
 #   1 TIMEOUT                    no outcome within MAX_SECONDS
 #   2 bad argument, git or GitHub API error (message printed)
-# A run cancelled while a newer run exists was superseded by the concurrency
-# group and never counts as the outcome. A dispatched run counts unless its
-# title names plan or destroy.
+# A deploying run is a push or a dispatched apply; a dispatched run whose
+# title names plan or destroy is not, and never counts. A deploying run
+# cancelled while a newer deploying run exists was superseded by the
+# concurrency group and never counts as the outcome; one cancelled with only
+# a plan or destroy after it does (a destroy shares the deploy group and can
+# cancel it, and the deploy did not happen).
 #
 # API budget: one GitHub call per poll (the workflow's newest runs on main),
 # polling every POLL_SECONDS (at least 60), so at most 40 calls over the full
@@ -59,18 +62,20 @@ for r in runs:
     print("\t".join([str(r["id"]), r["status"], r["conclusion"] or "-", r["event"],
                      r["head_sha"], r["html_url"], "skip" if other else "ok"]))
 PY
-    newest=""; newer_exists=""
+    newest=""; newer_deploy=""
     while IFS=$'\t' read -r _ status concl _ sha url flag; do
       # A run waiting for approval holds the concurrency group, whatever it deploys.
       if [ "$status" = waiting ]; then echo "AWAITING_APPROVAL $url"; exit 6; fi
-      if [ "$flag" != ok ] || ! is_after "$sha"; then newer_exists=1; continue; fi
+      # Plans and destroys never count, and never supersede anything.
+      [ "$flag" = ok ] || continue
+      if ! is_after "$sha"; then newer_deploy=1; continue; fi
       if [ "$status" = completed ] && [ "$concl" = success ]; then echo "DEPLOYED $sha $url"; exit 0; fi
       if [ -z "$newest" ]; then
-        # Superseded: cancelled with a newer run behind it. Look further back.
-        if [ "$concl" = cancelled ] && [ -n "$newer_exists" ]; then newer_exists=1; continue; fi
+        # Superseded: cancelled with a newer deploying run behind it. Look further back.
+        if [ "$concl" = cancelled ] && [ -n "$newer_deploy" ]; then newer_deploy=1; continue; fi
         newest="$status $concl $url"
       fi
-      newer_exists=1
+      newer_deploy=1
     done < "$tmp/runs.tsv"
     read -r nstatus nconcl nurl <<<"$newest"
     if [ "${nstatus:-}" = completed ]; then echo "FAILED $nurl ($nconcl)"; exit 3; fi

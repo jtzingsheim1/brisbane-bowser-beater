@@ -3,8 +3,8 @@
 # Design: docs/mcp-auto-deploy-design.md. Job graph:
 #
 #   build ──> deploy ──┬──> deploy-gated ──┐
-#                      └──> notify-gated   ├──> report
-#   (build, deploy and deploy-gated) ──────┘
+#                      └──> notify-gated ──┼──> report
+#   (build and deploy) ────────────────────┘
 #
 # - build: no AWS, no OIDC token, no environment. Typechecks, tests and
 #   bundles mcp/, and uploads mcp/dist as an artifact (the bundle is not
@@ -26,7 +26,10 @@
 # - notify-gated / report: open or comment on an issue labelled
 #   `mcp-deploy` (assigned to the repo owner, so GitHub emails it) when a
 #   run fails or waits for approval; close open ones after a successful
-#   deploy. They hold `issues: write` and no AWS access.
+#   deploy. They hold `issues: write` and no AWS access. A dispatched
+#   destroy waiting for approval opens no issue: the maintainer started it,
+#   so they already know it is waiting (notify-gated keys on deploy's
+#   gated route, and deploy is skipped on destroy).
 #
 # Security model (section 4 of the design): workflow code and tests on main
 # are attacker-controlled in the threat model, so the plan classifier and
@@ -78,8 +81,16 @@ permissions: {}
 # A burst of merges collapses to the newest pending run, and jobs from
 # different runs never interleave. A gated run waiting for approval holds
 # the group, so later deploys queue behind it.
+#
+# A dispatched `plan` gets its own group (mcp-deploy-plan): only one run
+# per group can be pending, so a plan sharing the deploy group could
+# cancel a push deploy queued behind a running one. A plan applies
+# nothing, so it can run beside a deploy: Terraform's state lock
+# serialises their state access (each waits up to -lock-timeout), and the
+# plan may show changes the running deploy is about to make. Apply and
+# destroy dispatches stay in the deploy group.
 concurrency:
-  group: mcp-deploy
+  group: mcp-deploy${{ github.event_name == 'workflow_dispatch' && inputs.action == 'plan' && '-plan' || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -421,11 +432,20 @@ jobs:
           if [ -n "$n" ]; then
             gh issue comment "$n" --body "$body"
           else
-            gh issue create --title "MCP deploy needs attention" --label mcp-deploy --assignee "$OWNER" --body "$body"
+            # An assignee the API refuses (say, an organisation-owned repo)
+            # must not cost the notification: retry unassigned.
+            gh issue create --title "MCP deploy needs attention" --label mcp-deploy --assignee "$OWNER" --body "$body" ||
+              gh issue create --title "MCP deploy needs attention" --label mcp-deploy --body "$body"
           fi
 
+  # Waits for notify-gated as well, so a rejected approval (deploy-gated
+  # fails at once) cannot race notify-gated into opening two issues, and a
+  # failed notification shows up as a failure here. notify-gated skipped
+  # (every route but gated) reads as `skipped`, which neither the failure
+  # nor the close condition below counts, and !cancelled() keeps report
+  # running when a needed job was skipped.
   report:
-    needs: [build, deploy, deploy-gated]
+    needs: [build, deploy, deploy-gated, notify-gated]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -437,14 +457,14 @@ jobs:
       OWNER: ${{ github.repository_owner }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SHA: ${{ github.sha }}
-      RESULTS: "build=${{ needs.build.result }}, deploy=${{ needs.deploy.result }} (route ${{ needs.deploy.outputs.route || 'none' }}), deploy-gated=${{ needs.deploy-gated.result }}"
+      RESULTS: "build=${{ needs.build.result }}, deploy=${{ needs.deploy.result }} (route ${{ needs.deploy.outputs.route || 'none' }}), deploy-gated=${{ needs.deploy-gated.result }}, notify-gated=${{ needs.notify-gated.result }}"
     steps:
       - name: Open or comment on the mcp-deploy issue
         if: contains(needs.*.result, 'failure')
         run: |
           set -euo pipefail
           body=$(printf '%s\n' \
-            "The MCP deploy of \`$SHA\` failed ($RESULTS). A rejected approval also shows as a failure." \
+            "A job in the MCP deploy of \`$SHA\` failed ($RESULTS). A rejected approval also shows as a failure; if notify-gated is the only failure, the deploy itself ran as the results show and only its approval notice was lost." \
             "" \
             "Run: $RUN_URL" \
             "" \
@@ -454,7 +474,10 @@ jobs:
           if [ -n "$n" ]; then
             gh issue comment "$n" --body "$body"
           else
-            gh issue create --title "MCP deploy needs attention" --label mcp-deploy --assignee "$OWNER" --body "$body"
+            # An assignee the API refuses (say, an organisation-owned repo)
+            # must not cost the notification: retry unassigned.
+            gh issue create --title "MCP deploy needs attention" --label mcp-deploy --assignee "$OWNER" --body "$body" ||
+              gh issue create --title "MCP deploy needs attention" --label mcp-deploy --body "$body"
           fi
 
       - name: Close resolved mcp-deploy issues

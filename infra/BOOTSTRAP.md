@@ -160,8 +160,9 @@ else
     --thumbprint-list \
       "6938fd4d98bab03faadb97b34396831e3780aea1" \
       "1c58a3a8518e8759bf075b76b750d4f2df264fcd" \
-    --tags Key=project,Value=bbb-mcp >/dev/null
-  echo "OIDC provider created"
+    --tags Key=project,Value=bbb-mcp >/dev/null \
+    && echo "OIDC provider created" \
+    || echo "FAILED: OIDC provider NOT created; fix the error above and re-paste"
 fi
 
 # ---- 2. Terraform state bucket -----------------------------
@@ -170,8 +171,9 @@ if aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
 else
   aws s3api create-bucket --bucket "${STATE_BUCKET}" \
     --region "${REGION}" \
-    --create-bucket-configuration "LocationConstraint=${REGION}" >/dev/null
-  echo "State bucket created: ${STATE_BUCKET}"
+    --create-bucket-configuration "LocationConstraint=${REGION}" >/dev/null \
+    && echo "State bucket created: ${STATE_BUCKET}" \
+    || echo "FAILED: state bucket NOT created; fix the error above and re-paste"
 fi
 aws s3api put-bucket-versioning --bucket "${STATE_BUCKET}" \
   --versioning-configuration Status=Enabled
@@ -326,13 +328,16 @@ put_managed_policy() {  # $1 = policy name, $2 = document path, $3 = description
       aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
     done
     aws iam create-policy-version --policy-arn "$arn" \
-      --policy-document "file://$2" --set-as-default >/dev/null
+      --policy-document "file://$2" --set-as-default >/dev/null \
+      && echo "Policy $1 updated" \
+      || echo "FAILED: policy $1 NOT updated; fix the error above and re-paste"
   else
     aws iam create-policy --policy-name "$1" \
       --policy-document "file://$2" \
       --description "$3" \
-      --tags Key=project,Value=bbb-mcp >/dev/null
-    echo "Policy $1 created"
+      --tags Key=project,Value=bbb-mcp >/dev/null \
+      && echo "Policy $1 created" \
+      || echo "FAILED: policy $1 NOT created; fix the error above and re-paste"
   fi
 }
 
@@ -647,28 +652,35 @@ cat > /tmp/policy.json <<EOF
 }
 EOF
 
+# Each success line prints only when its call succeeded; a FAILED line
+# means that step did not take (the error is printed above it).
 if [ "${DEPLOY_ROLE_STAGE}" = "transition" ]; then
   # Paste A only: widen the trust, leave the policy as it is.
   aws iam update-assume-role-policy --role-name bbb-mcp-deploy \
-    --policy-document file:///tmp/deploy-trust-transition.json
-  echo "Deploy role trust: aws + aws-gated (transition); policy unchanged"
+    --policy-document file:///tmp/deploy-trust-transition.json \
+    && echo "Deploy role trust: aws + aws-gated (transition); policy unchanged" \
+    || echo "FAILED: deploy role trust NOT updated; fix the error above and re-paste"
 elif [ "${DEPLOY_ROLE_STAGE}" = "final" ]; then
   if aws iam get-role --role-name bbb-mcp-deploy >/dev/null 2>&1; then
     echo "Deploy role already exists; refreshing trust + policy"
     aws iam update-assume-role-policy --role-name bbb-mcp-deploy \
-      --policy-document file:///tmp/trust.json
+      --policy-document file:///tmp/trust.json \
+      && echo "Deploy role trust: aws-gated only" \
+      || echo "FAILED: deploy role trust NOT updated; fix the error above and re-paste"
   else
     aws iam create-role --role-name bbb-mcp-deploy \
       --assume-role-policy-document file:///tmp/trust.json \
       --description "GitHub Actions OIDC deploy role for the BBB MCP stack" \
       --max-session-duration 3600 \
-      --tags Key=project,Value=bbb-mcp >/dev/null
-    echo "Deploy role created"
+      --tags Key=project,Value=bbb-mcp >/dev/null \
+      && echo "Deploy role created" \
+      || echo "FAILED: deploy role NOT created; fix the error above and re-paste"
   fi
   aws iam put-role-policy --role-name bbb-mcp-deploy \
     --policy-name bbb-mcp-deploy-policy \
-    --policy-document file:///tmp/policy.json
-  echo "Deploy policy attached"
+    --policy-document file:///tmp/policy.json \
+    && echo "Deploy policy attached" \
+    || echo "FAILED: deploy policy NOT applied; fix the error above and re-paste"
 else
   echo "DEPLOY_ROLE_STAGE must be final or transition; deploy role NOT changed"
 fi
@@ -765,19 +777,22 @@ EOF
 if aws iam get-role --role-name bbb-mcp-corpus-sync >/dev/null 2>&1; then
   echo "Corpus-sync role already exists; refreshing trust + policy"
   aws iam update-assume-role-policy --role-name bbb-mcp-corpus-sync \
-    --policy-document file:///tmp/corpus-trust.json
+    --policy-document file:///tmp/corpus-trust.json \
+    || echo "FAILED: corpus-sync role trust NOT updated; fix the error above and re-paste"
 else
   aws iam create-role --role-name bbb-mcp-corpus-sync \
     --assume-role-policy-document file:///tmp/corpus-trust.json \
     --description "GitHub Actions OIDC role that publishes the BBB MCP docs corpus" \
     --max-session-duration 3600 \
-    --tags Key=project,Value=bbb-mcp >/dev/null
-  echo "Corpus-sync role created"
+    --tags Key=project,Value=bbb-mcp >/dev/null \
+    && echo "Corpus-sync role created" \
+    || echo "FAILED: corpus-sync role NOT created; fix the error above and re-paste"
 fi
 aws iam put-role-policy --role-name bbb-mcp-corpus-sync \
   --policy-name bbb-mcp-corpus-sync-policy \
-  --policy-document file:///tmp/corpus-policy.json
-echo "Corpus-sync policy attached"
+  --policy-document file:///tmp/corpus-policy.json \
+  && echo "Corpus-sync policy attached" \
+  || echo "FAILED: corpus-sync policy NOT applied; fix the error above and re-paste"
 
 # ---- 3e. Update role (unattended, code-only deploys) -------
 # (3e runs before 3d: the backstop's action targets this role, so
@@ -992,19 +1007,22 @@ EOF
 if aws iam get-role --role-name bbb-mcp-update >/dev/null 2>&1; then
   echo "Update role already exists; refreshing trust + policy"
   aws iam update-assume-role-policy --role-name bbb-mcp-update \
-    --policy-document file:///tmp/update-trust.json
+    --policy-document file:///tmp/update-trust.json \
+    || echo "FAILED: update role trust NOT updated; fix the error above and re-paste"
 else
   aws iam create-role --role-name bbb-mcp-update \
     --assume-role-policy-document file:///tmp/update-trust.json \
     --description "GitHub Actions OIDC role for unattended BBB MCP code-only deploys" \
     --max-session-duration 3600 \
-    --tags Key=project,Value=bbb-mcp >/dev/null
-  echo "Update role created"
+    --tags Key=project,Value=bbb-mcp >/dev/null \
+    && echo "Update role created" \
+    || echo "FAILED: update role NOT created; fix the error above and re-paste"
 fi
 aws iam put-role-policy --role-name bbb-mcp-update \
   --policy-name bbb-mcp-update-policy \
-  --policy-document file:///tmp/update-policy.json
-echo "Update policy attached"
+  --policy-document file:///tmp/update-policy.json \
+  && echo "Update policy attached" \
+  || echo "FAILED: update policy NOT applied; fix the error above and re-paste"
 
 # ---- 3d. Cost backstop (human-owned) -----------------------
 # A monthly budget on the account's actual costs whose action, at
@@ -1137,31 +1155,42 @@ else
   if aws iam get-role --role-name bbb-backstop-action >/dev/null 2>&1; then
     echo "Backstop role already exists; refreshing trust, boundary + policy"
     aws iam update-assume-role-policy --role-name bbb-backstop-action \
-      --policy-document file:///tmp/backstop-action-trust.json
+      --policy-document file:///tmp/backstop-action-trust.json \
+      || echo "FAILED: backstop role trust NOT updated; fix the error above and re-paste"
     aws iam put-role-permissions-boundary --role-name bbb-backstop-action \
-      --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
+      --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam" \
+      || echo "FAILED: backstop role boundary NOT set; fix the error above and re-paste"
   else
     aws iam create-role --role-name bbb-backstop-action \
       --assume-role-policy-document file:///tmp/backstop-action-trust.json \
       --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam" \
       --description "Execution role for the BBB MCP cost-backstop budget action" \
-      --tags Key=project,Value=bbb-mcp >/dev/null
-    echo "Backstop role created"
-    sleep 10  # let IAM propagate before Budgets validates the role
+      --tags Key=project,Value=bbb-mcp >/dev/null \
+      && echo "Backstop role created" \
+      || echo "FAILED: backstop role NOT created; fix the error above and re-paste"
+    # Let IAM propagate before Budgets validates the role. If
+    # create-budget-action below still fails with an error about the
+    # execution role (Budgets could not assume or validate it), IAM had
+    # not caught up: wait a minute and re-paste. Every step is
+    # idempotent, so the re-paste only creates what is missing.
+    sleep 10
   fi
   aws iam put-role-policy --role-name bbb-backstop-action \
     --policy-name bbb-backstop-action-policy \
-    --policy-document file:///tmp/backstop-action-policy.json
+    --policy-document file:///tmp/backstop-action-policy.json \
+    || echo "FAILED: backstop role policy NOT applied; fix the error above and re-paste"
 
   if aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
       --budget-name bbb-backstop-monthly --region us-east-1 >/dev/null 2>&1; then
     echo "Backstop budget exists; refreshing its limit"
     aws budgets update-budget --account-id "${ACCOUNT_ID}" \
-      --new-budget file:///tmp/backstop-budget.json --region us-east-1
+      --new-budget file:///tmp/backstop-budget.json --region us-east-1 \
+      || echo "FAILED: backstop budget limit NOT refreshed; fix the error above and re-paste"
   else
     aws budgets create-budget --account-id "${ACCOUNT_ID}" \
-      --budget file:///tmp/backstop-budget.json --region us-east-1
-    echo "Backstop budget created (${BACKSTOP_LIMIT_USD} USD/month)"
+      --budget file:///tmp/backstop-budget.json --region us-east-1 \
+      && echo "Backstop budget created (${BACKSTOP_LIMIT_USD} USD/month)" \
+      || echo "FAILED: backstop budget NOT created; fix the error above and re-paste"
   fi
 
   ACTION_ID=$(aws budgets describe-budget-actions-for-budget \
@@ -1185,8 +1214,9 @@ else
       --execution-role-arn "arn:aws:iam::${ACCOUNT_ID}:role/bbb-backstop-action" \
       --approval-model AUTOMATIC \
       --subscribers "SubscriptionType=EMAIL,Address=${ALERT_EMAIL}" \
-      --region us-east-1 >/dev/null
-    echo "Backstop action created"
+      --region us-east-1 >/dev/null \
+      && echo "Backstop action created" \
+      || echo "FAILED: backstop action NOT created (an execution-role error: wait a minute and re-paste)"
   fi
   aws budgets describe-budget-actions-for-budget \
     --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
@@ -1225,8 +1255,9 @@ else
   aws budgets create-budget --account-id "${ACCOUNT_ID}" \
     --budget file:///tmp/budget.json \
     --notifications-with-subscribers file:///tmp/budget-notify.json \
-    --region us-east-1
-  echo "Zero-spend budget created (alerts -> ${ALERT_EMAIL})"
+    --region us-east-1 \
+    && echo "Zero-spend budget created (alerts -> ${ALERT_EMAIL})" \
+    || echo "FAILED: zero-spend budget NOT created; fix the error above and re-paste"
 fi
 
 rm -f /tmp/trust.json /tmp/deploy-trust-transition.json /tmp/policy.json \
@@ -1284,6 +1315,11 @@ echo "    MCP_KB_ID                = ${KB_ID:-<absent until first apply>}"
 echo "    MCP_DATA_SOURCE_ID       = ${DS_ID:-<absent until first apply>}"
 echo "    MCP_CORPUS_BUCKET        = bbb-mcp-corpus-${ACCOUNT_ID}"
 echo "=========================================================="
+echo "Scroll up for any FAILED line before moving on."
+# The CloudShell session stays open after the paste: turn nounset off
+# again, since it breaks tab completion and other interactive shell
+# features that read unset variables.
+set +u
 ```
 
 4. Copy the variable values the script prints at the end; Step 4 needs
@@ -1434,21 +1470,55 @@ approval on `aws-gated`, and the budget emails you):
 the deny policy stays attached across month rollover by design --
 nothing un-denies itself. Neither deploy role can detach it, so a gated
 deploy does not clear it either. To restore service after deciding the
-spend was acceptable, detach it from every target role in CloudShell:
+spend was acceptable, reverse the action in CloudShell. Budgets then
+detaches the deny through the action's own role (`bbb-backstop-action`,
+which holds the detach for exactly these four roles):
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-for r in bbb-mcp-server-exec bbb-mcp-kb-role bbb-mcp-update bbb-mcp-corpus-sync; do
-  aws iam detach-role-policy --role-name "$r" \
-    --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny" \
-    2>/dev/null && echo "Detached from $r"
+ACTION_ID=$(aws budgets describe-budget-actions-for-budget \
+  --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+  --region us-east-1 --query 'Actions[0].ActionId' --output text)
+aws budgets execute-budget-action --account-id "${ACCOUNT_ID}" \
+  --budget-name bbb-backstop-monthly --action-id "${ACTION_ID}" \
+  --execution-type REVERSE_BUDGET_ACTION --region us-east-1 \
+  && echo "Reverse requested for ${ACTION_ID}" \
+  || echo "FAILED: reverse not accepted; use the manual detach below"
+# A minute later: the status, and where the deny is still attached.
+aws budgets describe-budget-actions-for-budget \
+  --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+  --region us-east-1 --query 'Actions[].[ActionId,Status]' --output text
+aws iam list-entities-for-policy \
+  --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny" \
+  --query 'PolicyRoles[].RoleName' --output text
+```
+
+Not yet exercised on this account: the exact status sequence after a
+reverse is unverified until first use. The aim is no role listed under
+the deny and the action back in **Standby** (the deploy workflow's smoke
+test fails on any other status). If it shows `REVERSE_SUCCESS` rather
+than `STANDBY`, reset it, by the same command with `--execution-type
+RESET_BUDGET_ACTION` or from the Budgets console, and check again (or
+re-paste Step 3, which prints the status). Record what the first use
+showed here.
+
+**Fallback: manual detach.** If the reverse fails or leaves the deny
+attached, detach it from every role that holds it, then reset the action
+as above:
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+DENY="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny"
+for r in $(aws iam list-entities-for-policy --policy-arn "${DENY}" \
+    --query 'PolicyRoles[].RoleName' --output text); do
+  aws iam detach-role-policy --role-name "$r" --policy-arn "${DENY}" \
+    && echo "Detached from $r" \
+    || echo "FAILED: still attached to $r"
 done
 ```
 
-then in the Budgets console reset the `bbb-backstop-monthly` action and
-confirm it shows **Standby** again (or re-paste Step 3, which prints the
-status). If the stack is being torn down instead, the same detach is
-step 1 of "Decommissioning": `terraform destroy` cannot detach it.
+If the stack is being torn down instead, this manual detach is step 1
+of "Decommissioning": `terraform destroy` cannot detach it.
 
 ---
 
@@ -1600,10 +1670,39 @@ The live account stays protected throughout: additive first, then the
 merge (which makes Terraform forget the old backstop without deleting
 it), then the narrowing. Do the steps in this order.
 
+0. **Check this month's spend against the new limit, BEFORE Paste A.**
+   The new backstop's action fires once actual spend reaches 100% of
+   `BACKSTOP_LIMIT_USD`, and a new action on a budget already past that
+   fires within hours, with a wider deny than the old one (Bedrock, log
+   ingestion and S3 writes, on four roles, the update role included). In
+   CloudShell, read the old budget's live limit and month-to-date actual
+   spend (Budgets reads are free):
+
+   ```bash
+   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+   aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
+     --budget-name bbb-mcp-monthly --region us-east-1 \
+     --query 'Budget.{limit: BudgetLimit.Amount, actual_mtd: CalculatedSpend.ActualSpend.Amount}' \
+     --output table
+   ```
+
+   Or, for the whole account's month-to-date cost (each Cost Explorer API
+   call is billed at 0.01 USD):
+
+   ```bash
+   aws ce get-cost-and-usage --granularity MONTHLY --metrics UnblendedCost \
+     --time-period "Start=$(date -u +%Y-%m-01),End=$(date -u -d tomorrow +%Y-%m-%d)" \
+     --query 'ResultsByTime[0].Total.UnblendedCost' --output table
+   ```
+
+   Set `BACKSTOP_LIMIT_USD` to the old budget's limit unless you mean to
+   change it. If month-to-date spend is at or near that value, either
+   raise `BACKSTOP_LIMIT_USD` above it with headroom for the rest of the
+   month, or wait for the month to roll over before Paste A.
 1. **Paste A: CloudShell, BEFORE merging** (additive, idempotent). Edit
-   the top of the Step 3 script: set `ALERT_EMAIL`, and set
-   `DEPLOY_ROLE_STAGE="transition"`. Paste the whole script. On this run
-   it:
+   the top of the Step 3 script: set `ALERT_EMAIL`, `BACKSTOP_LIMIT_USD`
+   (step 0) and `DEPLOY_ROLE_STAGE="transition"`. Paste the whole script,
+   then scroll back for any `FAILED` line. On this run it:
    - creates the update role `bbb-mcp-update` (3e);
    - arms the new `bbb-backstop-*` resources (3d), a second backstop
      alongside the old Terraform-managed `bbb-mcp-monthly` one;
@@ -1646,31 +1745,58 @@ it), then the narrowing. Do the steps in this order.
      script).
    - **Protect `main`** as Step 4.3 describes.
 3. **Merge.** `aws` still has its reviewer, so the push run first asks
-   you to approve the unattended job. Its plan cannot read the old
-   backstop, so it routes to the gated job, which asks for a second
-   approval on `aws-gated`. That apply forgets the five old backstop
-   resources (the `removed` blocks in `infra/rag.tf`) without deleting
-   them. Approve both; check the gated apply reports them as forgotten,
-   not destroyed.
-4. **Paste B: CloudShell, after that gated apply succeeds.** First delete
-   the old backstop, in this order (each step skips what is already
-   gone):
+   you to approve the unattended job. That job routes to the gated job
+   either way: its plan hits AccessDenied reading the old backstop, or,
+   if the read succeeds, the classifier gates the plan's `forget`
+   actions. The gated job asks for a second approval on `aws-gated`.
+   That apply forgets the five old backstop resources (the `removed`
+   blocks in `infra/rag.tf`) without deleting them. Approve both.
+4. **Paste B: CloudShell, only after that gated apply succeeds.** Never
+   run it early: deleting the old backstop while Terraform still tracks
+   it would make the next plan try to recreate it. First, on GitHub,
+   confirm the merge's run shows `deploy-gated` succeeded and that its
+   job summary ("Plan with the deploy role (gated)") lists these five
+   lines with `[forget]`:
+
+   ```text
+   aws_budgets_budget_action.deny_bedrock
+   aws_budgets_budget.mcp
+   aws_iam_role_policy.budgets
+   aws_iam_role.budgets
+   aws_iam_policy.bedrock_deny
+   ```
+
+   The block below checks the same thing against the Terraform state
+   (resource addresses only, never values) and stops if any of the five
+   is still there. It then deletes the old backstop, in this order: the
+   budget action first, so it cannot fire again while the rest goes, then
+   the budget, the old deny's attachments, the action role, and the deny
+   policy. Each step skips what is already gone, and the block stops at
+   the first failure (it runs in a subshell, so the session stays open);
+   fix the cause and re-run it whole.
 
    ```bash
+   (
+   set -uo pipefail
    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
    OLD_DENY="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-bedrock-deny"
+   STATE="s3://bbb-mcp-tfstate-${ACCOUNT_ID}/bbb-mcp/terraform.tfstate"
 
-   # 1. Detach the old deny policy wherever it is attached (only if it
-   #    ever fired).
-   if aws iam get-policy --policy-arn "${OLD_DENY}" >/dev/null 2>&1; then
-     for r in $(aws iam list-entities-for-policy --policy-arn "${OLD_DENY}" \
-         --query 'PolicyRoles[].RoleName' --output text); do
-       aws iam detach-role-policy --role-name "$r" --policy-arn "${OLD_DENY}"
-       echo "Detached old deny from $r"
-     done
+   # 0. Terraform must have forgotten all five old resources.
+   ADDRS=$(aws s3 cp "${STATE}" - | jq -r '.resources[] | select(.mode == "managed") | "\(.type).\(.name)"') \
+     && [ -n "${ADDRS}" ] \
+     || { echo "FAILED: could not read the Terraform state; stopping"; exit 1; }
+   LEFT=$(printf '%s\n' "${ADDRS}" | grep -xE 'aws_budgets_budget_action\.deny_bedrock|aws_budgets_budget\.mcp|aws_iam_role_policy\.budgets|aws_iam_role\.budgets|aws_iam_policy\.bedrock_deny')
+   if [ -n "${LEFT}" ]; then
+     echo "STOP: Terraform still tracks:"; echo "${LEFT}"
+     echo "The merge's gated apply has not forgotten them yet; nothing deleted."
+     exit 1
    fi
+   echo "State check passed: the old backstop is no longer in Terraform state"
 
-   # 2. The old budget action, then the old budget.
+   # 1. The old budget action, then the old budget. ResourceLocked from
+   #    delete-budget-action means the action is mid-execution: wait a
+   #    few minutes and re-run this block.
    if aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
        --budget-name bbb-mcp-monthly --region us-east-1 >/dev/null 2>&1; then
      for a in $(aws budgets describe-budget-actions-for-budget \
@@ -1678,19 +1804,33 @@ it), then the narrowing. Do the steps in this order.
          --region us-east-1 --query 'Actions[].ActionId' --output text); do
        aws budgets delete-budget-action --account-id "${ACCOUNT_ID}" \
          --budget-name bbb-mcp-monthly --action-id "$a" \
-         --region us-east-1 >/dev/null
+         --region us-east-1 >/dev/null \
+         || { echo "FAILED: old budget action $a not deleted (ResourceLocked: wait, then re-run)"; exit 1; }
        echo "Deleted old budget action $a"
      done
      aws budgets delete-budget --account-id "${ACCOUNT_ID}" \
-       --budget-name bbb-mcp-monthly --region us-east-1
+       --budget-name bbb-mcp-monthly --region us-east-1 \
+       || { echo "FAILED: old budget not deleted"; exit 1; }
      echo "Deleted old budget bbb-mcp-monthly"
+   fi
+
+   # 2. Detach the old deny policy wherever it is attached (only if it
+   #    ever fired). Its action is gone, so it cannot re-attach.
+   if aws iam get-policy --policy-arn "${OLD_DENY}" >/dev/null 2>&1; then
+     for r in $(aws iam list-entities-for-policy --policy-arn "${OLD_DENY}" \
+         --query 'PolicyRoles[].RoleName' --output text); do
+       aws iam detach-role-policy --role-name "$r" --policy-arn "${OLD_DENY}" \
+         || { echo "FAILED: old deny not detached from $r"; exit 1; }
+       echo "Detached old deny from $r"
+     done
    fi
 
    # 3. The old action role's inline policy, then the role.
    if aws iam get-role --role-name bbb-mcp-budgets-action >/dev/null 2>&1; then
      aws iam delete-role-policy --role-name bbb-mcp-budgets-action \
        --policy-name bbb-mcp-budgets-policy 2>/dev/null
-     aws iam delete-role --role-name bbb-mcp-budgets-action
+     aws iam delete-role --role-name bbb-mcp-budgets-action \
+       || { echo "FAILED: old role bbb-mcp-budgets-action not deleted"; exit 1; }
      echo "Deleted old role bbb-mcp-budgets-action"
    fi
 
@@ -1700,16 +1840,20 @@ it), then the narrowing. Do the steps in this order.
          --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
        aws iam delete-policy-version --policy-arn "${OLD_DENY}" --version-id "$v"
      done
-     aws iam delete-policy --policy-arn "${OLD_DENY}"
+     aws iam delete-policy --policy-arn "${OLD_DENY}" \
+       || { echo "FAILED: old policy bbb-mcp-bedrock-deny not deleted"; exit 1; }
      echo "Deleted old policy bbb-mcp-bedrock-deny"
    fi
+   echo "Old backstop deleted"
+   )
    ```
 
    Then set `DEPLOY_ROLE_STAGE="final"` at the top of the Step 3 script
    and paste it again. On this run it replaces the deploy role's policy
    with the narrowed one plus the backstop Denies, and rewrites its trust
-   to the `aws-gated` subject only. Check the output says "Deploy policy
-   attached".
+   to the `aws-gated` subject only. Check the output says "Deploy role
+   trust: aws-gated only" and "Deploy policy attached", with no `FAILED`
+   line.
 5. **GitHub.** Remove the required reviewer from the `aws` environment
    (keep its `main`-only branch rule), and delete the `ALERT_EMAIL`
    repository variable, which nothing reads any more.
@@ -1773,11 +1917,16 @@ The deployed stack is one Terraform root module; the hand-made resources
 around it are not, and two of them must go for the exit to stick. Teardown,
 in this order:
 
-1. **Detach the backstop deny, in CloudShell.** Only needed if the
-   backstop has fired, but harmless otherwise. Neither deploy role may
-   detach `bbb-backstop-deny`, so a destroy would otherwise fail when it
-   tries to delete a role the deny is attached to. Run the detach loop in
-   "If the backstop ever fires" above.
+1. **Detach the backstop deny, in CloudShell: REQUIRED if the backstop
+   has fired**, harmless otherwise, so run it either way. Neither deploy
+   role may detach `bbb-backstop-deny`, and IAM refuses to delete a role
+   with a managed policy attached (`DeleteConflict`), so otherwise the
+   destroy fails at the server and knowledge-base roles, and steps 3 to 5
+   fail at the update and corpus-sync roles and the deny policy itself.
+   Run the manual detach loop ("Fallback: manual detach") in "If the
+   backstop ever fires" above, and check it prints no `FAILED` line.
+   Steps 3 and 4 below also detach before deleting, so a missed step 1
+   cannot leave them stuck.
 2. **Destroy the stack.** Run the deploy workflow in destroy mode, which
    always runs on the gated path (one approval on `aws-gated`). It
    removes the Lambda, API, keys, logs, the knowledge base, the vector
@@ -1785,13 +1934,20 @@ in this order:
 3. **Delete both deploy roles, in CloudShell: required.** A later merge to
    `main` would otherwise trigger the deploy workflow and, with one
    approval, rebuild the stack, and licence cl 4.6 bars using the
-   Licensed Data or derived products after termination. Delete each
-   role's inline policy, then the role:
+   Licensed Data or derived products after termination. Detach any
+   managed policy (the backstop deny, if it fired), delete each role's
+   inline policy, then the role:
 
    ```bash
    for r in bbb-mcp-update bbb-mcp-deploy; do
+     for p in $(aws iam list-attached-role-policies --role-name "$r" \
+         --query 'AttachedPolicies[].PolicyArn' --output text); do
+       aws iam detach-role-policy --role-name "$r" --policy-arn "$p"
+     done
      aws iam delete-role-policy --role-name "$r" --policy-name "$r-policy"
-     aws iam delete-role --role-name "$r"
+     aws iam delete-role --role-name "$r" \
+       && echo "Deleted $r" \
+       || echo "FAILED: $r NOT deleted; fix the error above and re-run"
    done
    ```
 
@@ -1816,11 +1972,19 @@ in this order:
      --policy-name bbb-backstop-action-policy
    aws iam delete-role --role-name bbb-backstop-action
    DENY="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny"
+   # Any role still holding the deny (the corpus-sync role, if it fired
+   # and step 1 was missed) would block the policy's deletion.
+   for r in $(aws iam list-entities-for-policy --policy-arn "${DENY}" \
+       --query 'PolicyRoles[].RoleName' --output text); do
+     aws iam detach-role-policy --role-name "$r" --policy-arn "${DENY}"
+   done
    for v in $(aws iam list-policy-versions --policy-arn "${DENY}" \
        --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
      aws iam delete-policy-version --policy-arn "${DENY}" --version-id "$v"
    done
-   aws iam delete-policy --policy-arn "${DENY}"
+   aws iam delete-policy --policy-arn "${DENY}" \
+     && echo "Backstop deleted" \
+     || echo "FAILED: bbb-backstop-deny NOT deleted; fix the error above and re-run"
    ```
 5. **Optionally, the rest, in CloudShell:** the corpus-sync role (it keeps
    trusting GitHub OIDC, with a grant on the deterministically-named

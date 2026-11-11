@@ -36,7 +36,13 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-/** Attributes whose change alone keeps an update routine, per type. */
+/**
+ * Attributes whose change alone keeps an update routine, per type.
+ *
+ * Never add a type that has write-only (ephemeral) attributes: plan JSON
+ * shows a write-only attribute as null on both sides, so a change to one
+ * is invisible here and would pass as routine.
+ */
 export const ALLOWED_ATTRIBUTES = {
   aws_lambda_function: [
     "source_code_hash",
@@ -145,12 +151,14 @@ export function classifyResourceChange(rc) {
   if (change.importing) {
     return { ...base, verdict: "gated", reason: "import" };
   }
-  if (actions.length === 1 && actions[0] === "no-op") {
-    if (rc?.previous_address) {
-      return { ...base, verdict: "gated", reason: "moved" };
-    }
-    return null;
+  // A move (a `moved` block or a refactor) is gated whatever else the
+  // entry does, so it is checked before any action: an update that also
+  // moves must not pass as a routine update.
+  if (rc?.previous_address) {
+    const writes = actions.some((a) => a === "create" || a === "update");
+    return { ...base, verdict: "gated", reason: "moved", corpus: CORPUS_TYPES.includes(type) && writes };
   }
+  if (actions.length === 1 && actions[0] === "no-op") return null;
   // Data sources read at apply time change nothing in AWS.
   if (actions.length === 1 && actions[0] === "read") return null;
 
@@ -259,7 +267,16 @@ function main(argv) {
     console.error("usage: classify-plan.mjs <plan.json>");
     process.exit(2);
   }
-  const result = classifyPlan(JSON.parse(readFileSync(path, "utf8")));
+  let plan;
+  try {
+    plan = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    // A parse error message quotes the input around the fault, and the
+    // input holds prior state with sensitive values: print nothing of it.
+    console.error("plan JSON did not parse");
+    process.exit(1);
+  }
+  const result = classifyPlan(plan);
   for (const line of formatLines(result)) console.log(line);
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, formatOutputs(result));

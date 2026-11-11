@@ -347,7 +347,19 @@ describe("the mcp-deploy workflow keeps its shape", () => {
       ["build", "deploy", "deploy-gated", "notify-gated", "report"].sort(),
     );
     expect(code).toMatch(/^permissions: \{\}\s*$/m);
-    expect(code).toMatch(/^concurrency:\n  group: mcp-deploy\n  cancel-in-progress: false$/m);
+    // A dispatched plan has its own group so it can never cancel a push
+    // deploy pending in the deploy group; everything else shares one.
+    expect(code).toContain(
+      "concurrency:\n  group: mcp-deploy${{ github.event_name == 'workflow_dispatch' && inputs.action == 'plan' && '-plan' || '' }}\n  cancel-in-progress: false\n",
+    );
+  });
+
+  it("report waits for every other job, notify-gated included", () => {
+    // Without notify-gated in needs, a rejected approval could race it
+    // into opening a second issue, and a failed notification would go
+    // unreported.
+    expect(code).toMatch(/^  report:\n    needs: \[build, deploy, deploy-gated, notify-gated\]$/m);
+    expect(jobIf(j.get("report")!)).toContain("!cancelled()");
   });
 
   it("build mints no token and declares no environment", () => {

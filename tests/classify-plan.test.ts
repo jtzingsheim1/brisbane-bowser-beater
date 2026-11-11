@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -74,6 +74,7 @@ describe("routing", () => {
     ["kb-update", "gated", true],
     ["import", "gated", false],
     ["moved", "gated", false],
+    ["moved-update", "gated", false],
   ] as const)("%s routes %s (corpus_sync=%s)", (name, route, corpus) => {
     const r = classify(name);
     expect(r.route).toBe(route);
@@ -134,6 +135,20 @@ describe("routing", () => {
     expect(classifyPlan({ ...noop, complete: false }).route).toBe("gated");
   });
 
+  it("gates a move even when its update alone would be routine", () => {
+    // moved-update is code-update's Lambda change plus a previous_address:
+    // the move is checked before the actions, so it cannot pass as routine.
+    const [entry] = classify("moved-update").entries;
+    expect(entry.actions).toEqual(["update"]);
+    expect(entry.verdict).toBe("gated");
+    expect(entry.reason).toBe("moved");
+    const plan = load("moved-update") as {
+      resource_changes: Record<string, unknown>[];
+    };
+    delete plan.resource_changes[0].previous_address;
+    expect(classifyPlan(plan).route).toBe("routine");
+  });
+
   it("treats an empty plan as noop", () => {
     expect(classifyPlan({ format_version: "1.2" }).route).toBe("noop");
   });
@@ -159,6 +174,20 @@ describe("output never carries a value from the plan", () => {
 
   const dir = mkdtempSync(join(tmpdir(), "classify-plan-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("a plan that does not parse prints only a fixed message, no input", () => {
+    const bad = join(dir, "bad.json");
+    writeFileSync(bad, `{"resource_changes": [{"value": "${SENTINEL}" ,,]}`);
+    let failed: { status: number; stdout: string; stderr: string } | undefined;
+    try {
+      execFileSync("node", [SCRIPT, bad], { encoding: "utf8", stdio: "pipe" });
+    } catch (e) {
+      failed = e as { status: number; stdout: string; stderr: string };
+    }
+    expect(failed?.status).toBe(1);
+    expect(failed?.stdout).toBe("");
+    expect(failed?.stderr.trim()).toBe("plan JSON did not parse");
+  });
 
   it.each(["code-update", "config-update", "outputs-only", "forget-backstop"])(
     "%s: the CLI's stdout, GITHUB_OUTPUT and step summary omit the sentinel",
