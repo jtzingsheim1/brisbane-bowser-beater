@@ -1,0 +1,108 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_budgets_budget_action.deny_bedrock",
+      "mode": "managed",
+      "type": "aws_budgets_budget_action",
+      "name": "deny_bedrock",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "budget_name": "bbb-mcp-monthly",
+          "status": "STANDBY"
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    },
+    {
+      "address": "aws_budgets_budget.mcp",
+      "mode": "managed",
+      "type": "aws_budgets_budget",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "name": "bbb-mcp-monthly",
+          "notification": [
+            {
+              "subscriber_email_addresses": [
+                "SENTINEL-SECRET-0d1e-do-not-print"
+              ]
+            }
+          ]
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    },
+    {
+      "address": "aws_iam_role.budgets",
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "budgets",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "name": "bbb-mcp-budgets-action"
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    },
+    {
+      "address": "aws_iam_role_policy.budgets",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "budgets",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "name": "bbb-mcp-budgets-action"
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    },
+    {
+      "address": "aws_iam_policy.bedrock_deny",
+      "mode": "managed",
+      "type": "aws_iam_policy",
+      "name": "bedrock_deny",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "name": "bbb-mcp-bedrock-deny"
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

@@ -1,0 +1,28 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.corpus",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "corpus",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "bucket": "bbb-mcp-corpus-111111111111"
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

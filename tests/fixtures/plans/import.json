@@ -1,0 +1,32 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_budgets_budget.mcp",
+      "mode": "managed",
+      "type": "aws_budgets_budget",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "bbb-mcp-monthly"
+        },
+        "after": {
+          "name": "bbb-mcp-monthly"
+        },
+        "after_unknown": {},
+        "importing": {
+          "id": "111111111111:bbb-mcp-monthly"
+        }
+      }
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}
