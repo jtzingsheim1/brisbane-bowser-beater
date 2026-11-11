@@ -142,6 +142,10 @@ New resources in `infra/rag.tf`:
   `aws_budgets_budget_action.deny_bedrock`, `aws_iam_role.budgets`
   (`bbb-mcp-budgets-action`), `aws_iam_policy.bedrock_deny`
   (`bbb-mcp-bedrock-deny`, a customer-managed `Deny bedrock:*`).
+  Superseded 2026-11: the backstop left Terraform (these resources became
+  `removed` blocks, forgotten rather than destroyed) and is now created by
+  hand as the `bbb-backstop-*` resources; see `infra/BOOTSTRAP.md`
+  section 3d.
 
 Changes to existing resources:
 
@@ -173,6 +177,14 @@ decision, and the workflow's narrow role cannot touch anything else), and
 the gated deploy workflow after each apply (so a rebuilt stack is
 populated immediately). `terraform destroy` remains a full decommission:
 KB, data source, vector index, buckets, budget action.
+
+Superseded 2026-11 (MCP auto-deploy, `docs/mcp-auto-deploy-design.md`):
+the deploy workflow now runs on push, and its apply-time sync runs only
+on approval-gated applies that create or change the knowledge base, its
+data source, the corpus bucket or the vector store; routine code deploys
+never sync. The budget action is no longer in the stack, so `terraform
+destroy` removes the stack but not the whole footprint; the full exit is
+`infra/BOOTSTRAP.md`, "Decommissioning".
 
 ## Cost guards (AWS-enforced, layered)
 
@@ -258,8 +270,20 @@ against a hostile caller driving up the bill. Layers, front to back:
    2026-08-22 are left untouched (the zero-spend alert will now fire
    once real Bedrock spend begins; that is expected and can be retired
    by hand whenever it becomes noise).
+   Superseded 2026-11: the budget and its action moved out of Terraform
+   into the human-owned backstop (`infra/BOOTSTRAP.md` section 3d,
+   amount set in the bootstrap script rather than `budget_limit_usd`).
+   It now attaches a deny on Bedrock, CloudWatch Logs ingestion and S3
+   writes to every role that can spend, not only the server role, and
+   neither deploy role can change it. The workload boundary also
+   narrowed model calls to the two models this design uses, with the
+   account's Bedrock on-demand quotas as a per-minute rate cap
+   (`mcp/README.md`, cost guards).
 5. **No long-lived credentials** (unchanged): OIDC-only deploy role,
-   human-approved runs.
+   human-approved runs. Superseded 2026-11: code-only deploys now run
+   unattended under a separate, narrower update role; every other change
+   still needs a human-approved run (`infra/BOOTSTRAP.md` sections 3b
+   and 3e).
 
 ## Config
 
@@ -290,6 +314,10 @@ account-scoped:
   lifecycle on `policy/bbb-mcp-*`. The existing explicit Deny on
   modifying `bbb-mcp-deploy` itself stays.
 - Budgets lifecycle on `budget/bbb-mcp-*`.
+
+Superseded 2026-11: the deploy role no longer holds Budgets or
+`bbb-mcp-budgets-*` IAM grants, and carries explicit Denies on writing
+the human-owned backstop (`infra/BOOTSTRAP.md` section 3d).
 
 Added 2026-08-23 (issue #101) and **applied to the live account the same
 day** (Step 3 re-pasted, then deploy run 8): the
@@ -343,6 +371,11 @@ permissions. See "Update for the permissions boundaries" in
    V2 needs no form but confirm it shows as available. Optional
    playground invoke (first invoke auto-subscribes, up to 15 min).
 3. Approve the deploy run (existing `aws` environment gate).
+
+Superseded 2026-11: the reviewer gate moved to the `aws-gated`
+environment, and the `aws` environment now runs code-only deploys
+unattended. A change like this one (new resources and IAM) still waits
+for one approval; see `infra/BOOTSTRAP.md` Step 4 and section 3d.
 
 ## Out of scope
 

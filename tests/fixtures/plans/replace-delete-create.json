@@ -1,0 +1,35 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_s3vectors_index.docs",
+      "mode": "managed",
+      "type": "aws_s3vectors_index",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "index_name": "bbb-mcp-docs",
+          "dimension": 1024
+        },
+        "after": {
+          "index_name": "bbb-mcp-docs",
+          "dimension": 512
+        },
+        "after_unknown": {
+          "index_arn": true
+        }
+      },
+      "action_reason": "replace_because_cannot_update"
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

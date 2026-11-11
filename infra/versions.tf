@@ -1,7 +1,10 @@
-# Single-stack IaC for the BBB MCP server. Everything the subproject needs
-# in AWS lives in this one root module, so `terraform destroy` is a complete
-# decommission (see infra/BOOTSTRAP.md for the few one-time resources that
-# live outside the stack: the OIDC provider, deploy role, and state bucket).
+# Single-stack IaC for the BBB MCP server. Everything a deploy manages lives
+# in this one root module, so `terraform destroy` removes all of it. A human
+# creates the rest in infra/BOOTSTRAP.md, outside the stack: the OIDC
+# provider, the three GitHub Actions roles (update, deploy, corpus-sync),
+# the two permissions boundaries, the cost backstop (budget, budget action,
+# deny policy and the action's role), the zero-spend budget and the state
+# bucket. Its "Decommissioning" section covers those, and the order.
 
 terraform {
   required_version = ">= 1.10"

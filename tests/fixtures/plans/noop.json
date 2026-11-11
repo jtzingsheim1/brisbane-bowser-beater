@@ -1,0 +1,90 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "data.aws_caller_identity.current",
+      "mode": "data",
+      "type": "aws_caller_identity",
+      "name": "current",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "read"
+        ],
+        "before": null,
+        "after": {},
+        "after_unknown": {
+          "account_id": true
+        }
+      }
+    },
+    {
+      "address": "aws_api_gateway_api_key.mcp",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_lambda_function.server",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "environment": [
+            {
+              "variables": {
+                "SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print",
+                "SUPABASE_URL": "https://example.supabase.co"
+              }
+            }
+          ]
+        },
+        "after": {
+          "environment": [
+            {
+              "variables": {
+                "SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print",
+                "SUPABASE_URL": "https://example.supabase.co"
+              }
+            }
+          ]
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "output_changes": {
+    "mcp_endpoint": {
+      "actions": [
+        "no-op"
+      ],
+      "before": "x",
+      "after": "x",
+      "after_unknown": false
+    }
+  },
+  "applyable": false,
+  "complete": true,
+  "errored": false
+}

@@ -1,32 +1,45 @@
 # AWS bootstrap runbook (one-time, ~30-45 minutes)
 
-This is the one-time, human-in-the-loop setup for the BBB MCP server's AWS
-account. Everything here happens exactly once. After this sitting, every
-deploy runs through GitHub Actions with short-lived OIDC credentials, and
-nothing else ever needs the AWS console.
+This is the human-in-the-loop setup for the BBB MCP server's AWS account.
+Steps 1, 2 and 4 happen once. Step 3 is one idempotent CloudShell paste:
+the first sitting runs it, it runs once more after the stack's first apply
+(to arm the cost backstop, section 3d), and every later change to a
+hand-made resource is applied by re-pasting it (the "Update for ..."
+sections below record each re-paste). Outside those pastes, every deploy
+runs through GitHub Actions with short-lived OIDC credentials.
 
 What you end up with:
 
 - A fresh AWS account with MFA on the root user and **zero long-lived access
   keys**. No IAM users exist at all. The only programmatic access to the
-  account is two roles GitHub Actions assumes via OIDC: a deploy role that
-  can only be assumed by a workflow run you have personally approved, and a
-  narrow corpus-sync role (bucket writes plus ingestion only) that jobs
-  running on main can assume without a gate.
+  account is three roles GitHub Actions assumes via OIDC:
+  - an update role (`bbb-mcp-update`, section 3e) that jobs in the `aws`
+    environment assume without approval, and that can only replace the
+    Lambda's code, retag stack resources, republish the docs corpus and
+    write Terraform state;
+  - a deploy role (`bbb-mcp-deploy`, section 3b) for every other change,
+    which only a workflow run you have approved in the `aws-gated`
+    environment can assume;
+  - a narrow corpus-sync role (`bbb-mcp-corpus-sync`, section 3c: bucket
+    writes plus ingestion only) that jobs running on main can assume
+    without a gate.
 - An S3 bucket for Terraform state (versioned, encrypted, public access
   blocked).
 - A zero-spend budget that emails you if the account ever accrues charges.
 - Two customer-managed permissions-boundary policies
   (`bbb-mcp-boundary-workload`, `bbb-mcp-boundary-iam`) that cap what the
-  roles Terraform creates can ever hold. The deploy role cannot create,
-  edit, remove or swap them, which is what makes them a real ceiling
-  rather than a default.
-- A GitHub environment named `aws` with you as required reviewer, plus the
-  repository variables the two workflows read.
+  roles Terraform creates, and the backstop's own role, can ever hold.
+  Neither deploy role can create, edit, remove or swap them, which is
+  what makes them a real ceiling rather than a default.
+- A human-owned cost backstop (section 3d, all named `bbb-backstop-*`): a
+  monthly budget whose action, at 100% of actual spend, attaches a deny
+  policy to every role that can spend. Neither deploy role can change it.
+- Two GitHub environments, `aws` (no reviewer) and `aws-gated` (you as
+  required reviewer), plus the repository variables the workflows read.
 
-Steps 1 and 2 are console clicking. Step 3 is one paste into CloudShell.
-Step 4 is GitHub settings. Have your password manager, phone, and a
-credit/debit card ready.
+Steps 1 and 2 are console clicking. Step 3 is one paste into CloudShell
+(re-run once after the first apply). Step 4 is GitHub settings. Have your
+password manager, phone, and a credit/debit card ready.
 
 ---
 
@@ -62,45 +75,67 @@ credit/debit card ready.
    In the repo, go to **Settings, Actions**, and find the **OIDC** settings
    (GitHub shows a toggle for the immutable subject claim format, plus a
    preview of the exact subject your repo will send). Enable it, then
-   confirm the previewed subject matches the FRONT PORTION of the
-   `GITHUB_SUB` value in the script below (name@numeric-id for both the
-   account and the repo). The preview shows only that prefix; the
-   `:environment:aws` tail is appended by GitHub at token time because
-   the deploy job runs in the `aws` environment, so the preview is not
-   expected to include it. This permanently ties the AWS trust policy to
-   the repo's numeric IDs, so a recycled account or repo name can never
-   mint matching tokens. Treat the toggle as one-way. If the previewed
-   prefix differs from the script's in any way, update `GITHUB_SUB` to
-   `<previewed-prefix>:environment:aws` before running.
+   confirm the previewed subject matches the `GITHUB_REPO_SUB` value in
+   the script below (name@numeric-id for both the account and the repo).
+   The preview shows only that prefix. GitHub appends the tail at token
+   time from the job's context (`:environment:aws`,
+   `:environment:aws-gated`, or `:ref:refs/heads/main` for a job with no
+   environment), and the script derives all three subjects from the one
+   prefix. This permanently ties the AWS trust policies to the repo's
+   numeric IDs, so a recycled account or repo name can never mint matching
+   tokens. Treat the toggle as one-way. If the previewed prefix differs
+   from the script's in any way, set `GITHUB_REPO_SUB` to the previewed
+   prefix before running.
 2. In the AWS console's top-right region selector, choose
    **Asia Pacific (Sydney) ap-southeast-2**.
 3. Open **CloudShell** (the terminal icon in the top toolbar, or search
    "CloudShell").
 4. **Edit the variables at the top** of the script below (your alert
-   email; the subject claim is prefilled from this repo's IDs), then paste
-   the whole thing into CloudShell and press Enter.
+   email, and the backstop's monthly limit if 5 USD does not suit; the
+   subject prefix is prefilled from this repo's IDs, and
+   `DEPLOY_ROLE_STAGE` stays `final` except during the one migration that
+   says otherwise), then paste the whole thing into CloudShell and press
+   Enter.
 
 The script is idempotent: if a resource already exists it says so and moves
-on, so it is safe to re-run if anything is interrupted.
+on (or refreshes it to the definition below), so it is safe to re-run if
+anything is interrupted.
+
+**Run it once more after the stack's first apply.** The cost backstop's
+action (section 3d) names roles Terraform creates (`bbb-mcp-server-exec`,
+`bbb-mcp-kb-role`), so on a fresh account section 3d finds them missing,
+says so, and skips. Re-pasting the script after the first deploy arms it.
 
 ```bash
 # ============================================================
-# BBB MCP one-time bootstrap. Region: ap-southeast-2 (Sydney).
-# EDIT THESE TWO LINES, then paste the whole script.
+# BBB MCP bootstrap. Region: ap-southeast-2 (Sydney).
+# EDIT THESE LINES, then paste the whole script.
 # ============================================================
-ALERT_EMAIL="you@example.com"   # billing alert email
-# The immutable OIDC subject this repo's gated `aws` environment sends
-# (Step 3.1). Numeric IDs are the permanent GitHub account and repo IDs.
-# The part before ":environment:aws" must exactly match the prefix shown
-# by the repo's OIDC settings preview (the tail is added at token time).
-GITHUB_SUB="repo:jtzingsheim1@43869157/brisbane-bowser-beater@1245389373:environment:aws"
+ALERT_EMAIL="you@example.com"   # billing + backstop alert email
+BACKSTOP_LIMIT_USD="5.0"        # section 3d: monthly budget, USD
+# The immutable OIDC subject PREFIX for this repo (Step 3.1). Numeric
+# IDs are the permanent GitHub account and repo IDs. Must exactly
+# match the repo's OIDC settings preview; GitHub adds the tail at
+# token time.
+GITHUB_REPO_SUB="repo:jtzingsheim1@43869157/brisbane-bowser-beater@1245389373"
+# "final" for every normal run. "transition" only for Paste A in
+# "Update for auto-deploy" (live account, before that merge): it
+# adds the aws-gated subject to the deploy role's trust, keeps the
+# aws subject, and leaves the deploy role's POLICY untouched.
+DEPLOY_ROLE_STAGE="final"
 # ============================================================
-# The subject a job running on this repo's main ref sends (no environment
-# tail, so no approval gate). Derived from GITHUB_SUB so the two can never
-# disagree on the repo. Note this matches by REF, not by event: any job in
-# the repo running on main that requests an OIDC token sends this subject,
-# not only the corpus-sync workflow's pushes. See section 3c.
-CORPUS_SYNC_SUB="${GITHUB_SUB%:environment:aws}:ref:refs/heads/main"
+# The three subjects, each derived from the one prefix above, so no
+# re-run can leave two trust policies disagreeing on the repo.
+#  - deploy role (3b): jobs in the reviewer-gated aws-gated environment
+DEPLOY_SUB="${GITHUB_REPO_SUB}:environment:aws-gated"
+#  - update role (3e): jobs in the aws environment (no reviewer,
+#    main only)
+UPDATE_SUB="${GITHUB_REPO_SUB}:environment:aws"
+#  - corpus-sync role (3c): any job on main with NO environment. This
+#    matches by REF, not by event: any job in the repo running on main
+#    that requests an OIDC token without an environment sends it, not
+#    only the corpus-sync workflow's pushes. See section 3c.
+CORPUS_SYNC_SUB="${GITHUB_REPO_SUB}:ref:refs/heads/main"
 
 set -u
 REGION="ap-southeast-2"
@@ -125,8 +160,9 @@ else
     --thumbprint-list \
       "6938fd4d98bab03faadb97b34396831e3780aea1" \
       "1c58a3a8518e8759bf075b76b750d4f2df264fcd" \
-    --tags Key=project,Value=bbb-mcp >/dev/null
-  echo "OIDC provider created"
+    --tags Key=project,Value=bbb-mcp >/dev/null \
+    && echo "OIDC provider created" \
+    || echo "FAILED: OIDC provider NOT created; fix the error above and re-paste"
 fi
 
 # ---- 2. Terraform state bucket -----------------------------
@@ -135,8 +171,9 @@ if aws s3api head-bucket --bucket "${STATE_BUCKET}" 2>/dev/null; then
 else
   aws s3api create-bucket --bucket "${STATE_BUCKET}" \
     --region "${REGION}" \
-    --create-bucket-configuration "LocationConstraint=${REGION}" >/dev/null
-  echo "State bucket created: ${STATE_BUCKET}"
+    --create-bucket-configuration "LocationConstraint=${REGION}" >/dev/null \
+    && echo "State bucket created: ${STATE_BUCKET}" \
+    || echo "FAILED: state bucket NOT created; fix the error above and re-paste"
 fi
 aws s3api put-bucket-versioning --bucket "${STATE_BUCKET}" \
   --versioning-configuration Status=Enabled
@@ -147,10 +184,11 @@ aws s3api put-public-access-block --bucket "${STATE_BUCKET}" \
   --public-access-block-configuration \
   'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
 
-# ---- 3a. Permissions boundaries (ceilings for stack roles) -----
-# The ceiling on every role Terraform creates. The deploy role can
-# write those roles' policies, so without a boundary a compromised
-# (or simply mistaken) deploy could grant them anything. Effective
+# ---- 3a. Permissions boundaries (ceilings for capped roles) ----
+# The ceiling on every role Terraform creates, and on the
+# backstop's own role. The deploy role can write the stack roles'
+# policies, so without a boundary a compromised (or simply
+# mistaken) deploy could grant them anything. Effective
 # permissions are the INTERSECTION of a role's own policy and its
 # boundary, so anything absent here is unreachable no matter what
 # the deploy writes.
@@ -161,30 +199,42 @@ aws s3api put-public-access-block --bucket "${STATE_BUCKET}" \
 # constrains. The deploy policy below adds an explicit Deny on
 # creating or editing these two policies, which beats that Allow.
 #
-# TWO boundaries, not one, because the budget action's role is the
-# only one that legitimately needs IAM write actions. A single
-# union boundary would hand that IAM ceiling to the server role
-# too -- and since it can attach/detach policies on
-# role/bbb-mcp-server-*, which matches the server role itself, a
-# rewritten server policy could then detach the bbb-mcp-bedrock-deny
-# cost backstop (that policy denies bedrock:*, so it cannot protect
+# TWO boundaries, not one, because the backstop's action role
+# (bbb-backstop-action, section 3d) is the only role that
+# legitimately needs IAM write actions, and those actions target
+# the server and knowledge-base roles themselves. A single union
+# boundary would hand that IAM ceiling to those roles too, and a
+# rewritten server policy could then detach the backstop deny
+# (which denies spending actions, not IAM, so it cannot protect
 # itself). Splitting keeps IAM entirely outside the workload
-# ceiling. The deploy policy pins each role pattern to its own
-# boundary, so neither can be swapped for the other.
+# ceiling. The deploy policy lets the pipeline create roles under
+# the workload ceiling only; nothing but this script creates a
+# role under the IAM one.
 #
 # Widen either only alongside a real new capability -- a too-tight
 # boundary shows up as an AccessDenied at runtime, not at apply time.
 #
 # Both documents are checked against the roles they cap on every CI run
 # (tests/infra-boundaries.test.ts). Each boundary must allow exactly the
-# union of the actions granted by the roles it caps, so widening one here
-# without a matching change in infra/*.tf fails the build, and so does
-# the reverse. Actions only: the Resource scoping below is not compared,
-# and is reviewed by eye.
+# union of the actions granted by the roles it caps (the stack roles in
+# infra/*.tf, the backstop role in section 3d), so widening one here
+# without a matching role change fails the build, and so does the
+# reverse. Actions only, with one exception: the workload boundary's
+# model ARNs are compared exactly with the locals in infra/rag.tf.
 
 # Workload ceiling: bbb-mcp-server-exec and bbb-mcp-kb-role.
 # Logs + Bedrock for the server; corpus reads, vector ops and Titan
 # embedding for the knowledge base. No IAM of any kind.
+#
+# Bedrock is split in two. Retrieve and RetrieveAndGenerate are not
+# resource-scopeable, so they stay on "*". Every model call is
+# limited to exactly two models: the Titan embedding model and Claude
+# Haiku through the au. inference profile, whose foundation-model
+# ARN is listed in both of the profile's destination regions. These
+# ARNs mirror titan_embed_arn, rag_profile_arn and
+# rag_model_region_arns in infra/rag.tf. A mismatch breaks ask_docs
+# (or ingestion) the moment this is pasted, so a model change lands
+# here first and is re-pasted BEFORE the deploy that switches models.
 cat > /tmp/boundary-workload.json <<EOF
 {
   "Version": "2012-10-17",
@@ -196,16 +246,25 @@ cat > /tmp/boundary-workload.json <<EOF
       "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:/aws/lambda/bbb-mcp-server:*"
     },
     {
-      "Sid": "BedrockRetrieveAndGenerate",
+      "Sid": "BedrockRetrieve",
+      "Effect": "Allow",
+      "Action": ["bedrock:Retrieve", "bedrock:RetrieveAndGenerate"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "BedrockTwoModelsOnly",
       "Effect": "Allow",
       "Action": [
-        "bedrock:Retrieve",
-        "bedrock:RetrieveAndGenerate",
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream",
         "bedrock:GetInferenceProfile"
       ],
-      "Resource": "*"
+      "Resource": [
+        "arn:aws:bedrock:${REGION}::foundation-model/amazon.titan-embed-text-v2:0",
+        "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:inference-profile/au.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:ap-southeast-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:ap-southeast-4::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0"
+      ]
     },
     {
       "Sid": "CorpusRead",
@@ -234,28 +293,33 @@ cat > /tmp/boundary-workload.json <<EOF
 }
 EOF
 
-# IAM ceiling: bbb-mcp-budgets-action only. Exactly the four calls
-# the budget action makes to attach the deny policy to the server
-# role when the cost backstop fires.
+# IAM ceiling: bbb-backstop-action only (section 3d). Exactly the
+# four calls the budget action makes to attach (and, on reset,
+# detach) the deny policy, on exactly the four roles it targets.
 cat > /tmp/boundary-iam.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
-    "Sid": "AttachDenyToServerRole",
+    "Sid": "AttachDenyToTargetRoles",
     "Effect": "Allow",
     "Action": [
       "iam:AttachRolePolicy", "iam:DetachRolePolicy",
       "iam:GetRole", "iam:ListAttachedRolePolicies"
     ],
-    "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*"
+    "Resource": [
+      "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-exec",
+      "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-role",
+      "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-update",
+      "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-corpus-sync"
+    ]
   }]
 }
 EOF
 
-put_boundary() {  # $1 = policy name, $2 = document path, $3 = description
+put_managed_policy() {  # $1 = policy name, $2 = document path, $3 = description
   local arn="arn:aws:iam::${ACCOUNT_ID}:policy/$1"
   if aws iam get-policy --policy-arn "$arn" >/dev/null 2>&1; then
-    echo "Boundary $1 exists; updating to the current definition"
+    echo "Policy $1 exists; updating to the current definition"
     # Delete every non-default version first, so the 5-version
     # limit can never block a future update: this leaves only the
     # current default, and the new default created below makes two.
@@ -264,25 +328,31 @@ put_boundary() {  # $1 = policy name, $2 = document path, $3 = description
       aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
     done
     aws iam create-policy-version --policy-arn "$arn" \
-      --policy-document "file://$2" --set-as-default >/dev/null
+      --policy-document "file://$2" --set-as-default >/dev/null \
+      && echo "Policy $1 updated" \
+      || echo "FAILED: policy $1 NOT updated; fix the error above and re-paste"
   else
     aws iam create-policy --policy-name "$1" \
       --policy-document "file://$2" \
       --description "$3" \
-      --tags Key=project,Value=bbb-mcp >/dev/null
-    echo "Boundary $1 created"
+      --tags Key=project,Value=bbb-mcp >/dev/null \
+      && echo "Policy $1 created" \
+      || echo "FAILED: policy $1 NOT created; fix the error above and re-paste"
   fi
 }
 
-put_boundary bbb-mcp-boundary-workload /tmp/boundary-workload.json \
+put_managed_policy bbb-mcp-boundary-workload /tmp/boundary-workload.json \
   "Workload ceiling for the BBB MCP server and knowledge-base roles (no IAM)"
-put_boundary bbb-mcp-boundary-iam /tmp/boundary-iam.json \
-  "IAM ceiling for the BBB MCP budget-action role"
+put_managed_policy bbb-mcp-boundary-iam /tmp/boundary-iam.json \
+  "IAM ceiling for the BBB MCP cost-backstop action role"
 
-# ---- 3b. Deploy role (assumed by GitHub Actions via OIDC) --
-# Trust is pinned to ONE repo AND the `aws` GitHub environment,
-# which has a required-reviewer rule. So this role can only be
-# assumed by a workflow run a human has explicitly approved.
+# ---- 3b. Deploy role (gated; assumed by GitHub Actions via OIDC) --
+# Trust is pinned to ONE repo AND the `aws-gated` GitHub environment,
+# which has a required-reviewer rule with admin bypass off. So this
+# role can only be assumed by a workflow run a human has explicitly
+# approved. It handles every change the update role (3e) cannot:
+# IAM, API Gateway, Lambda configuration, new, replaced or deleted
+# resources, and destroy.
 cat > /tmp/trust.json <<EOF
 {
   "Version": "2012-10-17",
@@ -293,7 +363,29 @@ cat > /tmp/trust.json <<EOF
     "Condition": {
       "StringEquals": {
         "${OIDC_URL}:aud": "sts.amazonaws.com",
-        "${OIDC_URL}:sub": "${GITHUB_SUB}"
+        "${OIDC_URL}:sub": "${DEPLOY_SUB}"
+      }
+    }
+  }]
+}
+EOF
+
+# Used ONLY by Paste A in "Update for auto-deploy" (live account,
+# before that merge): the deploy role accepts both the old `aws`
+# subject (still reviewer-gated at that point) and the new
+# `aws-gated` one, so the merge's runs can use either. Paste B
+# replaces it with /tmp/trust.json above.
+cat > /tmp/deploy-trust-transition.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "${OIDC_ARN}" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "${OIDC_URL}:aud": "sts.amazonaws.com",
+        "${OIDC_URL}:sub": ["${UPDATE_SUB}", "${DEPLOY_SUB}"]
       }
     }
   }]
@@ -302,24 +394,31 @@ EOF
 
 # Scoped deploy permissions: only what Terraform needs to manage
 # the bbb-mcp stack. The IAM role actions are scoped to the
-# specific roles Terraform creates (bbb-mcp-server-*, bbb-mcp-kb-*,
-# bbb-mcp-budgets-*) -- deliberately NOT bbb-mcp-* , which would
-# also match this deploy role (bbb-mcp-deploy) and let an assumed
-# session rewrite its own policy/trust directly. An explicit Deny
-# on the deploy role's own ARN blocks that path even if the
-# pattern is ever loosened. Honest limit of this scoping: a deploy
-# role that can create Lambda-executable roles, write their
-# policies, and deploy code into them is still account-powerful by
-# construction (that IS deploying), so the real control on this
-# account is that every session of this role requires a human-
-# approved workflow run from main -- the scoping below is blast-
-# radius hygiene inside a single-purpose account, not a sandbox.
-# API Gateway does not support name-scoped ARNs, so it is scoped
-# to this region and account (which contains nothing else). The
-# Bedrock, S3 Vectors, corpus-bucket, and Budgets statements
+# specific roles Terraform creates (bbb-mcp-server-*, bbb-mcp-kb-*)
+# -- deliberately NOT bbb-mcp-* , which would also match this
+# deploy role (bbb-mcp-deploy) and the hand-made update and
+# corpus-sync roles, and let an assumed session rewrite them. An
+# explicit Deny on the deploy role's own ARN blocks the self path
+# even if the pattern is ever loosened. Honest limit of this
+# scoping: a deploy role that can create Lambda-executable roles,
+# write their policies, and deploy code into them is still
+# account-powerful by construction (that IS deploying), so the real
+# control on this account is that every session of this role
+# requires a human-approved workflow run from main -- the scoping
+# below is blast-radius hygiene inside a single-purpose account,
+# not a sandbox. API Gateway does not support name-scoped ARNs, so
+# it is scoped to this region and account (which contains nothing
+# else). The Bedrock, S3 Vectors and corpus-bucket statements
 # support the docs Q&A (RAG) stack added 2026-08; knowledge-base
 # creation and listing cannot be resource-scoped, everything else
 # is name- or account-scoped.
+#
+# The cost backstop (section 3d) is out of reach: no Allow here
+# matches a bbb-backstop-* name except the two budget reads the
+# smoke test uses, and the last two statements Deny every write to
+# it, plus detaching its deny policy from any role. A detach names
+# the role, not the policy, so that Deny is keyed on the
+# iam:PolicyARN condition rather than on a resource.
 cat > /tmp/policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -351,17 +450,6 @@ cat > /tmp/policy.json <<EOF
       }
     },
     {
-      "Sid": "StackRolesCreateIamBounded",
-      "Effect": "Allow",
-      "Action": ["iam:CreateRole"],
-      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*",
-      "Condition": {
-        "ArnEquals": {
-          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
-        }
-      }
-    },
-    {
       "Sid": "StackRolesSetWorkloadBoundary",
       "Effect": "Allow",
       "Action": ["iam:PutRolePermissionsBoundary"],
@@ -372,17 +460,6 @@ cat > /tmp/policy.json <<EOF
       "Condition": {
         "ArnEquals": {
           "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-workload"
-        }
-      }
-    },
-    {
-      "Sid": "StackRolesSetIamBoundary",
-      "Effect": "Allow",
-      "Action": ["iam:PutRolePermissionsBoundary"],
-      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*",
-      "Condition": {
-        "ArnEquals": {
-          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
         }
       }
     },
@@ -399,8 +476,7 @@ cat > /tmp/policy.json <<EOF
       ],
       "Resource": [
         "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
-        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*",
-        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*"
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*"
       ]
     },
     {
@@ -460,15 +536,6 @@ cat > /tmp/policy.json <<EOF
       "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*",
       "Condition": {
         "StringEquals": { "iam:PassedToService": "bedrock.amazonaws.com" }
-      }
-    },
-    {
-      "Sid": "PassBudgetsRoleToBudgetsOnly",
-      "Effect": "Allow",
-      "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-budgets-*",
-      "Condition": {
-        "StringEquals": { "iam:PassedToService": "budgets.amazonaws.com" }
       }
     },
     {
@@ -539,31 +606,84 @@ cat > /tmp/policy.json <<EOF
       "Resource": "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:knowledge-base/*"
     },
     {
-      "Sid": "CostBudget",
+      "Sid": "BackstopRead",
       "Effect": "Allow",
-      "Action": "budgets:*",
-      "Resource": "arn:aws:budgets::${ACCOUNT_ID}:budget/bbb-mcp-*"
+      "Action": ["budgets:ViewBudget", "budgets:DescribeBudgetAction*"],
+      "Resource": "arn:aws:budgets::${ACCOUNT_ID}:budget/bbb-backstop-*"
+    },
+    {
+      "Sid": "DenyBackstopWrites",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole",
+        "iam:UpdateRoleDescription", "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:TagRole", "iam:UntagRole", "iam:PassRole",
+        "iam:CreatePolicy", "iam:DeletePolicy",
+        "iam:CreatePolicyVersion", "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy", "iam:UntagPolicy",
+        "budgets:ModifyBudget",
+        "budgets:CreateBudgetAction", "budgets:UpdateBudgetAction",
+        "budgets:DeleteBudgetAction", "budgets:ExecuteBudgetAction",
+        "budgets:TagResource", "budgets:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-backstop-*",
+        "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-*",
+        "arn:aws:budgets::${ACCOUNT_ID}:budget/bbb-backstop-*"
+      ]
+    },
+    {
+      "Sid": "DenyBackstopDetach",
+      "Effect": "Deny",
+      "Action": ["iam:DetachRolePolicy"],
+      "Resource": "*",
+      "Condition": {
+        "ArnLike": {
+          "iam:PolicyARN": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-*"
+        }
+      }
     }
   ]
 }
 EOF
 
-if aws iam get-role --role-name bbb-mcp-deploy >/dev/null 2>&1; then
-  echo "Deploy role already exists; refreshing trust + policy"
+# Each success line prints only when its call succeeded; a FAILED line
+# means that step did not take (the error is printed above it).
+if [ "${DEPLOY_ROLE_STAGE}" = "transition" ]; then
+  # Paste A only: widen the trust, leave the policy as it is.
   aws iam update-assume-role-policy --role-name bbb-mcp-deploy \
-    --policy-document file:///tmp/trust.json
+    --policy-document file:///tmp/deploy-trust-transition.json \
+    && echo "Deploy role trust: aws + aws-gated (transition); policy unchanged" \
+    || echo "FAILED: deploy role trust NOT updated; fix the error above and re-paste"
+elif [ "${DEPLOY_ROLE_STAGE}" = "final" ]; then
+  if aws iam get-role --role-name bbb-mcp-deploy >/dev/null 2>&1; then
+    echo "Deploy role already exists; refreshing trust + policy"
+    aws iam update-assume-role-policy --role-name bbb-mcp-deploy \
+      --policy-document file:///tmp/trust.json \
+      && echo "Deploy role trust: aws-gated only" \
+      || echo "FAILED: deploy role trust NOT updated; fix the error above and re-paste"
+  else
+    aws iam create-role --role-name bbb-mcp-deploy \
+      --assume-role-policy-document file:///tmp/trust.json \
+      --description "GitHub Actions OIDC deploy role for the BBB MCP stack" \
+      --max-session-duration 3600 \
+      --tags Key=project,Value=bbb-mcp >/dev/null \
+      && echo "Deploy role created" \
+      || echo "FAILED: deploy role NOT created; fix the error above and re-paste"
+  fi
+  aws iam put-role-policy --role-name bbb-mcp-deploy \
+    --policy-name bbb-mcp-deploy-policy \
+    --policy-document file:///tmp/policy.json \
+    && echo "Deploy policy attached" \
+    || echo "FAILED: deploy policy NOT applied; fix the error above and re-paste"
 else
-  aws iam create-role --role-name bbb-mcp-deploy \
-    --assume-role-policy-document file:///tmp/trust.json \
-    --description "GitHub Actions OIDC deploy role for the BBB MCP stack" \
-    --max-session-duration 3600 \
-    --tags Key=project,Value=bbb-mcp >/dev/null
-  echo "Deploy role created"
+  echo "DEPLOY_ROLE_STAGE must be final or transition; deploy role NOT changed"
 fi
-aws iam put-role-policy --role-name bbb-mcp-deploy \
-  --policy-name bbb-mcp-deploy-policy \
-  --policy-document file:///tmp/policy.json
-echo "Deploy policy attached"
 
 # ---- 3c. Corpus-sync role (ungated docs publisher) ---------
 # Assumed by .github/workflows/corpus-sync.yml on every push to
@@ -574,8 +694,8 @@ echo "Deploy policy attached"
 # bucket plus starting/polling ingestion jobs, nothing else. No
 # Lambda, no IAM, no Terraform state, no API Gateway.
 #
-# Created HERE by a human, like the deploy role, and deliberately
-# named outside the bbb-mcp-server-*/bbb-mcp-kb-*/bbb-mcp-budgets-*
+# Created HERE by a human, like the deploy and update roles, and
+# deliberately named outside the bbb-mcp-server-*/bbb-mcp-kb-*
 # patterns the deploy policy's IAM statements are scoped to, so the
 # pipeline can neither create this role nor widen it.
 # tests/infra-boundaries.test.ts pins its grants and checks that
@@ -584,30 +704,30 @@ echo "Deploy policy attached"
 # Known limit of the trust policy, worth understanding before adding
 # workflows to this repo: the subject below pins the main REF, not an
 # event or a workflow file, so any job here running on main that asks
-# for an OIDC token can assume this role. AWS accepts conditions on
-# aud/azp/amr/sub only, so it cannot match GitHub's job_workflow_ref
-# claim directly -- and a condition on a claim AWS does not populate
-# evaluates false, which denies every run rather than narrowing one.
-# So the containment is the role's own narrowness (it can republish
-# docs and nothing else) plus a test asserting which workflows may
-# request a token at all.
+# for an OIDC token without an environment can assume this role. AWS
+# accepts conditions on aud/azp/amr/sub only, so it cannot match
+# GitHub's job_workflow_ref claim directly -- and a condition on a
+# claim AWS does not populate evaluates false, which denies every run
+# rather than narrowing one. So the containment is the role's own
+# narrowness (it can republish docs and nothing else) plus a test
+# asserting which workflows may request a token at all.
 #
 # Two ways to narrow further if that stops being enough:
 #
 #   * Give this role its own GitHub environment with NO required
 #     reviewers and its branches limited to main, then pin the subject
-#     to ":environment:<name>". Cheap, and keeps the role ungated, but
-#     it narrows to jobs that OPT IN -- any workflow naming that
-#     environment still gets the subject.
+#     to ":environment:<name>" (the pattern the update role, 3e, uses).
+#     Cheap, and keeps the role ungated, but it narrows to jobs that OPT
+#     IN -- any workflow naming that environment still gets the subject.
 #   * Customise the repo's subject claim to include job_workflow_ref
 #     and pin the whole string. This does pin one workflow file, but
 #     the customisation is repo-WIDE: it rewrites the subject for every
-#     workflow, so the deploy role's trust policy has to change in the
-#     same sitting or deploys stop authenticating. GitHub also documents
-#     creating the matching cloud-side condition first. How that segment
-#     renders under the immutable subject format this repo uses is not
-#     documented -- confirm with an OIDC debugger run before pasting a
-#     policy that depends on it.
+#     workflow, so the deploy and update roles' trust policies have to
+#     change in the same sitting or deploys stop authenticating. GitHub
+#     also documents creating the matching cloud-side condition first.
+#     How that segment renders under the immutable subject format this
+#     repo uses is not documented -- confirm with an OIDC debugger run
+#     before pasting a policy that depends on it.
 cat > /tmp/corpus-trust.json <<EOF
 {
   "Version": "2012-10-17",
@@ -657,19 +777,452 @@ EOF
 if aws iam get-role --role-name bbb-mcp-corpus-sync >/dev/null 2>&1; then
   echo "Corpus-sync role already exists; refreshing trust + policy"
   aws iam update-assume-role-policy --role-name bbb-mcp-corpus-sync \
-    --policy-document file:///tmp/corpus-trust.json
+    --policy-document file:///tmp/corpus-trust.json \
+    || echo "FAILED: corpus-sync role trust NOT updated; fix the error above and re-paste"
 else
   aws iam create-role --role-name bbb-mcp-corpus-sync \
     --assume-role-policy-document file:///tmp/corpus-trust.json \
     --description "GitHub Actions OIDC role that publishes the BBB MCP docs corpus" \
     --max-session-duration 3600 \
-    --tags Key=project,Value=bbb-mcp >/dev/null
-  echo "Corpus-sync role created"
+    --tags Key=project,Value=bbb-mcp >/dev/null \
+    && echo "Corpus-sync role created" \
+    || echo "FAILED: corpus-sync role NOT created; fix the error above and re-paste"
 fi
 aws iam put-role-policy --role-name bbb-mcp-corpus-sync \
   --policy-name bbb-mcp-corpus-sync-policy \
-  --policy-document file:///tmp/corpus-policy.json
-echo "Corpus-sync policy attached"
+  --policy-document file:///tmp/corpus-policy.json \
+  && echo "Corpus-sync policy attached" \
+  || echo "FAILED: corpus-sync policy NOT applied; fix the error above and re-paste"
+
+# ---- 3e. Update role (unattended, code-only deploys) -------
+# (3e runs before 3d: the backstop's action targets this role, so
+# it must exist first. The letters record the order the sections
+# were added, not the order they run.)
+#
+# Assumed by the deploy workflow's unattended job in the `aws`
+# GitHub environment, which has NO required reviewer and is limited
+# to main. What makes that acceptable is what this role cannot do:
+#
+#   * Writes: the Lambda's CODE only (lambda:UpdateFunctionCode on
+#     exactly bbb-mcp-server), tags on the Lambda, corpus bucket,
+#     vector store and knowledge base, corpus objects, starting an
+#     ingestion, and Terraform state. Nothing else.
+#   * No IAM write and no iam:PassRole, so it cannot create or
+#     reshape a role or point the Lambda at a different one.
+#   * No lambda:UpdateFunctionConfiguration, so the timeout, memory,
+#     environment and execution role stay what a gated run set.
+#   * No lambda:InvokeFunction, so it cannot call the server around
+#     the API key.
+#   * No API Gateway write, and no write to the backstop (3d), with
+#     the same explicit Denies the deploy role carries.
+#
+# Reads are wildcards (Get*/List*/Describe*) on stack resources so a
+# Terraform provider bump that adds a refresh call does not break the
+# unattended path. One read matters: apigateway:GET returns the API
+# keys' values, so this role can read them (and so spend their
+# monthly quotas, which it cannot change).
+#
+# Anything the plan needs beyond these grants fails with
+# AccessDenied, which the workflow routes to the gated deploy role.
+# Named outside every pattern the deploy policy can write, like the
+# corpus-sync role; tests/infra-boundaries.test.ts pins the exact
+# grants below and that separation.
+cat > /tmp/update-trust.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "${OIDC_ARN}" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "${OIDC_URL}:aud": "sts.amazonaws.com",
+        "${OIDC_URL}:sub": "${UPDATE_SUB}"
+      }
+    }
+  }]
+}
+EOF
+
+cat > /tmp/update-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TerraformStateList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::${STATE_BUCKET}"
+    },
+    {
+      "Sid": "TerraformStateRW",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::${STATE_BUCKET}/bbb-mcp/*"
+    },
+    {
+      "Sid": "LambdaCodeOnly",
+      "Effect": "Allow",
+      "Action": ["lambda:UpdateFunctionCode"],
+      "Resource": "arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:bbb-mcp-server"
+    },
+    {
+      "Sid": "LambdaTags",
+      "Effect": "Allow",
+      "Action": ["lambda:TagResource", "lambda:UntagResource"],
+      "Resource": "arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:bbb-mcp-server"
+    },
+    {
+      "Sid": "LambdaRead",
+      "Effect": "Allow",
+      "Action": ["lambda:Get*", "lambda:List*"],
+      "Resource": "arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:bbb-mcp-*"
+    },
+    {
+      "Sid": "CorpusObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::bbb-mcp-corpus-${ACCOUNT_ID}/*"
+    },
+    {
+      "Sid": "CorpusTags",
+      "Effect": "Allow",
+      "Action": ["s3:PutBucketTagging"],
+      "Resource": "arn:aws:s3:::bbb-mcp-corpus-${ACCOUNT_ID}"
+    },
+    {
+      "Sid": "CorpusRead",
+      "Effect": "Allow",
+      "Action": ["s3:Get*", "s3:List*"],
+      "Resource": [
+        "arn:aws:s3:::bbb-mcp-corpus-${ACCOUNT_ID}",
+        "arn:aws:s3:::bbb-mcp-corpus-${ACCOUNT_ID}/*"
+      ]
+    },
+    {
+      "Sid": "VectorStoreTags",
+      "Effect": "Allow",
+      "Action": ["s3vectors:TagResource", "s3vectors:UntagResource"],
+      "Resource": [
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*",
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*/index/*"
+      ]
+    },
+    {
+      "Sid": "VectorStoreRead",
+      "Effect": "Allow",
+      "Action": ["s3vectors:Get*", "s3vectors:List*"],
+      "Resource": [
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*",
+        "arn:aws:s3vectors:${REGION}:${ACCOUNT_ID}:bucket/bbb-mcp-*/index/*"
+      ]
+    },
+    {
+      "Sid": "KnowledgeBaseIngest",
+      "Effect": "Allow",
+      "Action": ["bedrock:StartIngestionJob", "bedrock:GetIngestionJob"],
+      "Resource": "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:knowledge-base/*"
+    },
+    {
+      "Sid": "KnowledgeBaseTags",
+      "Effect": "Allow",
+      "Action": ["bedrock:TagResource", "bedrock:UntagResource"],
+      "Resource": "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:knowledge-base/*"
+    },
+    {
+      "Sid": "KnowledgeBaseRead",
+      "Effect": "Allow",
+      "Action": ["bedrock:Get*", "bedrock:List*"],
+      "Resource": "arn:aws:bedrock:${REGION}:${ACCOUNT_ID}:knowledge-base/*"
+    },
+    {
+      "Sid": "LogGroupRead",
+      "Effect": "Allow",
+      "Action": ["logs:Describe*", "logs:List*"],
+      "Resource": "arn:aws:logs:${REGION}:${ACCOUNT_ID}:log-group:*"
+    },
+    {
+      "Sid": "ApiGatewayRead",
+      "Effect": "Allow",
+      "Action": ["apigateway:GET"],
+      "Resource": "arn:aws:apigateway:${REGION}::/*"
+    },
+    {
+      "Sid": "StackRoleRead",
+      "Effect": "Allow",
+      "Action": ["iam:Get*", "iam:List*"],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-*",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-*",
+        "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-*"
+      ]
+    },
+    {
+      "Sid": "BackstopRead",
+      "Effect": "Allow",
+      "Action": ["budgets:ViewBudget", "budgets:DescribeBudgetAction*"],
+      "Resource": "arn:aws:budgets::${ACCOUNT_ID}:budget/bbb-backstop-*"
+    },
+    {
+      "Sid": "DenyBackstopWrites",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole",
+        "iam:UpdateRoleDescription", "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:TagRole", "iam:UntagRole", "iam:PassRole",
+        "iam:CreatePolicy", "iam:DeletePolicy",
+        "iam:CreatePolicyVersion", "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy", "iam:UntagPolicy",
+        "budgets:ModifyBudget",
+        "budgets:CreateBudgetAction", "budgets:UpdateBudgetAction",
+        "budgets:DeleteBudgetAction", "budgets:ExecuteBudgetAction",
+        "budgets:TagResource", "budgets:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-backstop-*",
+        "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-*",
+        "arn:aws:budgets::${ACCOUNT_ID}:budget/bbb-backstop-*"
+      ]
+    },
+    {
+      "Sid": "DenyBackstopDetach",
+      "Effect": "Deny",
+      "Action": ["iam:DetachRolePolicy"],
+      "Resource": "*",
+      "Condition": {
+        "ArnLike": {
+          "iam:PolicyARN": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-*"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+if aws iam get-role --role-name bbb-mcp-update >/dev/null 2>&1; then
+  echo "Update role already exists; refreshing trust + policy"
+  aws iam update-assume-role-policy --role-name bbb-mcp-update \
+    --policy-document file:///tmp/update-trust.json \
+    || echo "FAILED: update role trust NOT updated; fix the error above and re-paste"
+else
+  aws iam create-role --role-name bbb-mcp-update \
+    --assume-role-policy-document file:///tmp/update-trust.json \
+    --description "GitHub Actions OIDC role for unattended BBB MCP code-only deploys" \
+    --max-session-duration 3600 \
+    --tags Key=project,Value=bbb-mcp >/dev/null \
+    && echo "Update role created" \
+    || echo "FAILED: update role NOT created; fix the error above and re-paste"
+fi
+aws iam put-role-policy --role-name bbb-mcp-update \
+  --policy-name bbb-mcp-update-policy \
+  --policy-document file:///tmp/update-policy.json \
+  && echo "Update policy attached" \
+  || echo "FAILED: update policy NOT applied; fix the error above and re-paste"
+
+# ---- 3d. Cost backstop (human-owned) -----------------------
+# A monthly budget on the account's actual costs whose action, at
+# 100%, AUTOMATICALLY attaches a deny policy to every role that can
+# spend: the server and knowledge-base roles (Terraform) and the
+# update and corpus-sync roles (this script). The deny covers
+# Bedrock, CloudWatch Logs ingestion and S3 writes. Billing data
+# lags by hours, so the gateway quota, the per-request caps and the
+# Bedrock rate quotas bound spending inside that window; this bounds
+# the month.
+#
+# Owned HERE, by a human, and named bbb-backstop-* so it sits outside
+# every pattern either deploy role can write. Both carry explicit
+# Denies on writing it and on detaching its deny policy from any
+# role, so no run of the pipeline, gated or not, can disarm it.
+# Reads stay allowed, for the deploy workflow's smoke test.
+#
+# Nothing un-denies itself: once fired, the deny stays attached across
+# month rollover until a human resets it ("If the backstop ever
+# fires", below). While it is attached, gated deploys still work (the
+# deploy role is not a target), but unattended deploys hit
+# AccessDenied at their Terraform state write (s3:PutObject) and
+# route to the gated path, so each deploy waits for one approval.
+#
+# Runs only once all four target roles exist. On a fresh account the
+# two Terraform roles appear at the stack's first apply, so this
+# section skips until Step 3 is re-pasted after that apply.
+BACKSTOP_ROLES="bbb-mcp-server-exec bbb-mcp-kb-role bbb-mcp-update bbb-mcp-corpus-sync"
+
+cat > /tmp/backstop-deny.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "DenySpending",
+    "Effect": "Deny",
+    "Action": ["bedrock:*", "logs:PutLogEvents", "s3:PutObject"],
+    "Resource": "*"
+  }]
+}
+EOF
+
+cat > /tmp/backstop-action-trust.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Service": "budgets.amazonaws.com" },
+    "Action": "sts:AssumeRole",
+    "Condition": {
+      "StringEquals": { "aws:SourceAccount": "${ACCOUNT_ID}" }
+    }
+  }]
+}
+EOF
+
+# Attach and detach are pinned to the one deny policy via
+# iam:PolicyARN, so this role can never be steered into attaching
+# anything else to the target roles. Capped by bbb-mcp-boundary-iam
+# (3a), which allows exactly these four actions on these four roles.
+cat > /tmp/backstop-action-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AttachDenyToTargetRoles",
+      "Effect": "Allow",
+      "Action": ["iam:AttachRolePolicy", "iam:DetachRolePolicy"],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-exec",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-role",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-update",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-corpus-sync"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny"
+        }
+      }
+    },
+    {
+      "Sid": "InspectTargetRoles",
+      "Effect": "Allow",
+      "Action": ["iam:GetRole", "iam:ListAttachedRolePolicies"],
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-server-exec",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-kb-role",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-update",
+        "arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-corpus-sync"
+      ]
+    }
+  ]
+}
+EOF
+
+cat > /tmp/backstop-budget.json <<EOF
+{
+  "BudgetName": "bbb-backstop-monthly",
+  "BudgetLimit": { "Amount": "${BACKSTOP_LIMIT_USD}", "Unit": "USD" },
+  "BudgetType": "COST",
+  "TimeUnit": "MONTHLY"
+}
+EOF
+
+cat > /tmp/backstop-action-definition.json <<EOF
+{
+  "IamActionDefinition": {
+    "PolicyArn": "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny",
+    "Roles": [
+      "bbb-mcp-server-exec",
+      "bbb-mcp-kb-role",
+      "bbb-mcp-update",
+      "bbb-mcp-corpus-sync"
+    ]
+  }
+}
+EOF
+
+MISSING_ROLES=""
+for r in ${BACKSTOP_ROLES}; do
+  aws iam get-role --role-name "$r" >/dev/null 2>&1 || MISSING_ROLES="${MISSING_ROLES} $r"
+done
+
+if [ -n "${MISSING_ROLES}" ]; then
+  echo "Backstop SKIPPED: target role(s) missing:${MISSING_ROLES}"
+  echo "  Re-paste Step 3 after the stack's first apply to arm it."
+else
+  put_managed_policy bbb-backstop-deny /tmp/backstop-deny.json \
+    "Attached by the BBB MCP cost backstop to stop spending"
+
+  if aws iam get-role --role-name bbb-backstop-action >/dev/null 2>&1; then
+    echo "Backstop role already exists; refreshing trust, boundary + policy"
+    aws iam update-assume-role-policy --role-name bbb-backstop-action \
+      --policy-document file:///tmp/backstop-action-trust.json \
+      || echo "FAILED: backstop role trust NOT updated; fix the error above and re-paste"
+    aws iam put-role-permissions-boundary --role-name bbb-backstop-action \
+      --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam" \
+      || echo "FAILED: backstop role boundary NOT set; fix the error above and re-paste"
+  else
+    aws iam create-role --role-name bbb-backstop-action \
+      --assume-role-policy-document file:///tmp/backstop-action-trust.json \
+      --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam" \
+      --description "Execution role for the BBB MCP cost-backstop budget action" \
+      --tags Key=project,Value=bbb-mcp >/dev/null \
+      && echo "Backstop role created" \
+      || echo "FAILED: backstop role NOT created; fix the error above and re-paste"
+    # Let IAM propagate before Budgets validates the role. If
+    # create-budget-action below still fails with an error about the
+    # execution role (Budgets could not assume or validate it), IAM had
+    # not caught up: wait a minute and re-paste. Every step is
+    # idempotent, so the re-paste only creates what is missing.
+    sleep 10
+  fi
+  aws iam put-role-policy --role-name bbb-backstop-action \
+    --policy-name bbb-backstop-action-policy \
+    --policy-document file:///tmp/backstop-action-policy.json \
+    || echo "FAILED: backstop role policy NOT applied; fix the error above and re-paste"
+
+  if aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
+      --budget-name bbb-backstop-monthly --region us-east-1 >/dev/null 2>&1; then
+    echo "Backstop budget exists; refreshing its limit"
+    aws budgets update-budget --account-id "${ACCOUNT_ID}" \
+      --new-budget file:///tmp/backstop-budget.json --region us-east-1 \
+      || echo "FAILED: backstop budget limit NOT refreshed; fix the error above and re-paste"
+  else
+    aws budgets create-budget --account-id "${ACCOUNT_ID}" \
+      --budget file:///tmp/backstop-budget.json --region us-east-1 \
+      && echo "Backstop budget created (${BACKSTOP_LIMIT_USD} USD/month)" \
+      || echo "FAILED: backstop budget NOT created; fix the error above and re-paste"
+  fi
+
+  ACTION_ID=$(aws budgets describe-budget-actions-for-budget \
+    --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+    --region us-east-1 --query 'Actions[0].ActionId' --output text)
+  if [ -n "${ACTION_ID}" ] && [ "${ACTION_ID}" != "None" ]; then
+    echo "Backstop action exists; refreshing its targets and subscriber"
+    aws budgets update-budget-action --account-id "${ACCOUNT_ID}" \
+      --budget-name bbb-backstop-monthly --action-id "${ACTION_ID}" \
+      --definition file:///tmp/backstop-action-definition.json \
+      --subscribers "SubscriptionType=EMAIL,Address=${ALERT_EMAIL}" \
+      --region us-east-1 >/dev/null \
+      || echo "  Could not update it (fired? see 'If the backstop ever fires')"
+  else
+    aws budgets create-budget-action --account-id "${ACCOUNT_ID}" \
+      --budget-name bbb-backstop-monthly \
+      --notification-type ACTUAL \
+      --action-type APPLY_IAM_POLICY \
+      --action-threshold ActionThresholdValue=100,ActionThresholdType=PERCENTAGE \
+      --definition file:///tmp/backstop-action-definition.json \
+      --execution-role-arn "arn:aws:iam::${ACCOUNT_ID}:role/bbb-backstop-action" \
+      --approval-model AUTOMATIC \
+      --subscribers "SubscriptionType=EMAIL,Address=${ALERT_EMAIL}" \
+      --region us-east-1 >/dev/null \
+      && echo "Backstop action created" \
+      || echo "FAILED: backstop action NOT created (an execution-role error: wait a minute and re-paste)"
+  fi
+  aws budgets describe-budget-actions-for-budget \
+    --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+    --region us-east-1 --query 'Actions[].[ActionId,Status]' --output text
+  echo "  (STANDBY = armed)"
+fi
 
 # ---- 4. Zero-spend budget ----------------------------------
 # AWS Budgets (without actions) is free. Emails you if actual
@@ -702,30 +1255,39 @@ else
   aws budgets create-budget --account-id "${ACCOUNT_ID}" \
     --budget file:///tmp/budget.json \
     --notifications-with-subscribers file:///tmp/budget-notify.json \
-    --region us-east-1
-  echo "Zero-spend budget created (alerts -> ${ALERT_EMAIL})"
+    --region us-east-1 \
+    && echo "Zero-spend budget created (alerts -> ${ALERT_EMAIL})" \
+    || echo "FAILED: zero-spend budget NOT created; fix the error above and re-paste"
 fi
 
-rm -f /tmp/trust.json /tmp/policy.json /tmp/budget.json /tmp/budget-notify.json \
+rm -f /tmp/trust.json /tmp/deploy-trust-transition.json /tmp/policy.json \
+      /tmp/budget.json /tmp/budget-notify.json \
       /tmp/boundary-workload.json /tmp/boundary-iam.json \
-      /tmp/corpus-trust.json /tmp/corpus-policy.json
+      /tmp/corpus-trust.json /tmp/corpus-policy.json \
+      /tmp/update-trust.json /tmp/update-policy.json \
+      /tmp/backstop-deny.json /tmp/backstop-action-trust.json \
+      /tmp/backstop-action-policy.json /tmp/backstop-budget.json \
+      /tmp/backstop-action-definition.json
 
 echo
 echo "=========================================================="
-echo "Bootstrap complete."
+echo "Bootstrap complete (deploy role stage: ${DEPLOY_ROLE_STAGE})."
 echo
-echo "  Trust policy pinned to OIDC subject:"
-echo "    ${GITHUB_SUB}"
-echo "  (verify this matches the repo's OIDC settings preview)"
+echo "  Trust policies pinned to OIDC subjects:"
+echo "    deploy (3b):      ${DEPLOY_SUB}"
+echo "    update (3e):      ${UPDATE_SUB}"
+echo "    corpus-sync (3c): ${CORPUS_SYNC_SUB}"
+echo "  (verify the shared prefix matches the repo's OIDC settings preview)"
 echo
 echo "Now add these in GitHub (Step 4):"
 echo
 echo "  Repository variables (Settings > Secrets and variables"
 echo "  > Actions > Variables tab > New repository variable):"
 echo
-echo "    AWS_ROLE_ARN      = arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-deploy"
-echo "    AWS_REGION        = ${REGION}"
-echo "    TF_STATE_BUCKET   = ${STATE_BUCKET}"
+echo "    AWS_UPDATE_ROLE_ARN = arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-update"
+echo "    AWS_ROLE_ARN        = arn:aws:iam::${ACCOUNT_ID}:role/bbb-mcp-deploy"
+echo "    AWS_REGION          = ${REGION}"
+echo "    TF_STATE_BUCKET     = ${STATE_BUCKET}"
 echo
 echo "  Plus two more (values from the Vercel project env or"
 echo "  .env.local -- see Step 4 of the runbook):"
@@ -753,45 +1315,72 @@ echo "    MCP_KB_ID                = ${KB_ID:-<absent until first apply>}"
 echo "    MCP_DATA_SOURCE_ID       = ${DS_ID:-<absent until first apply>}"
 echo "    MCP_CORPUS_BUCKET        = bbb-mcp-corpus-${ACCOUNT_ID}"
 echo "=========================================================="
+echo "Scroll up for any FAILED line before moving on."
+# The CloudShell session stays open after the paste: turn nounset off
+# again, since it breaks tab completion and other interactive shell
+# features that read unset variables.
+set +u
 ```
 
 4. Copy the variable values the script prints at the end; Step 4 needs
    them.
 
-**A note on what the trust policy pins.** With the immutable subject claim
-enabled (Step 3.1), the deploy role trusts a GitHub identity that embeds
-the account's and repository's permanent numeric IDs, not just their
-names. A recycled or squatted name can therefore never mint a matching
-token, even if the account or repo were deleted and re-registered by
-someone else. One operational consequence: renaming or transferring the
-repository changes the subject's name portion, so deploys would stop
-authenticating (a safe, fail-closed outcome) until the trust policy is
-updated to the new subject; re-running the Step 3 script with an updated
-`GITHUB_SUB` refreshes it in place.
+**A note on what the trust policies pin.** With the immutable subject claim
+enabled (Step 3.1), the three GitHub Actions roles trust a GitHub identity
+that embeds the account's and repository's permanent numeric IDs, not just
+their names. A recycled or squatted name can therefore never mint a
+matching token, even if the account or repo were deleted and re-registered
+by someone else. One operational consequence: renaming or transferring the
+repository changes the subject's name portion, so deploys and corpus syncs
+would stop authenticating (a safe, fail-closed outcome) until the trust
+policies are updated; re-running the Step 3 script with an updated
+`GITHUB_REPO_SUB` refreshes all three in place.
 
-## Step 4 -- GitHub environment and variables (~10 min)
+
+## Step 4 -- GitHub environments and variables (~10 min)
 
 All of this is in the repo:
 <https://github.com/jtzingsheim1/brisbane-bowser-beater/settings>.
 
-1. **Create the gated environment.** Settings, **Environments**, **New
+1. **Create the unattended environment.** Settings, **Environments**, **New
    environment**, name it exactly `aws`.
-   - Tick **Required reviewers** and add yourself, then **Save protection
-     rules**. Every deploy will pause until you approve it in the Actions
-     UI.
+   - Leave **Required reviewers** unticked. Runs in this environment get
+     the update role (section 3e) and proceed without approval.
    - Under **Deployment branches and tags**, choose **Selected branches and
-     tags** and add a rule for `main`. Only workflow runs from `main` can
-     use the environment.
+     tags** and add a rule for `main` (no tag rule). Only workflow runs
+     from `main` can use the environment.
+2. **Create the gated environment.** **New environment** again, name it
+   exactly `aws-gated`.
+   - Tick **Required reviewers** and add yourself.
+   - Untick **Allow administrators to bypass configured protection
+     rules**, so no account, yours included, can skip the approval.
+   - Under **Deployment branches and tags**, choose **Selected branches and
+     tags** and add a rule for `main`.
+   - **Save protection rules**. Every gated run will pause until you
+     approve it in the Actions UI (or on GitHub Mobile).
 
-   > **This step is the human-approval gate.** AWS trusts any workflow run
-   > carrying the `environment:aws` identity; the "a human approves every
-   > deploy" property comes entirely from the required-reviewer rule you set
-   > here, not from AWS. If you create the `aws` environment without a
-   > required reviewer, deploys will run unattended. Do not skip the
-   > reviewer tick.
-2. **Add the repository variables.** Settings, **Secrets and variables**,
+   > **The `aws-gated` reviewer is the human-approval gate.** AWS trusts
+   > any workflow run carrying the `environment:aws-gated` identity with
+   > the deploy role, which can change IAM, API Gateway, the Lambda's
+   > configuration and anything else in the stack; that a human approves
+   > each such run comes entirely from the reviewer rule set here, not
+   > from AWS. Never remove that reviewer, and never re-tick the admin
+   > bypass. The `aws` environment has no reviewer on purpose: its role
+   > can only replace the Lambda's code, retag stack resources, republish
+   > the docs corpus and write Terraform state, and anything more fails
+   > with AccessDenied and waits for `aws-gated`. Both environments must
+   > stay limited to `main`. To stop unattended deploys at once, add a
+   > reviewer to `aws`: every run then waits for an approval.
+3. **Protect `main`.** Settings, **Branches** (or **Rules**), a rule for
+   `main`: require a pull request before merging (0 approvals, so a
+   single maintainer and the weekly dependency session can still merge),
+   and do not allow administrators to bypass it. Both environments trust
+   whatever is on `main`, so this is what keeps a direct push from
+   deploying.
+4. **Add the repository variables.** Settings, **Secrets and variables**,
    **Actions**, **Variables** tab, **New repository variable**. Create the
-   three variables exactly as printed by the CloudShell script:
+   four variables exactly as printed by the CloudShell script:
+   - `AWS_UPDATE_ROLE_ARN`
    - `AWS_ROLE_ARN`
    - `AWS_REGION`
    - `TF_STATE_BUCKET`
@@ -819,28 +1408,36 @@ All of this is in the repo:
    - `MCP_CORPUS_BUCKET`
 
    These are variables rather than secrets on purpose: none of them are
-   sensitive. A role ARN is not a credential (assuming the deploy role
-   requires a GitHub OIDC token from an approved run of this repo's `aws`
-   environment, and the corpus-sync role one from a job on this repo's
-   `main`), and the Supabase URL and anon key are the publishable
-   (low-privilege) tier, with Postgres grants/RLS limiting the anon role
-   to aggregate read paths only.
+   sensitive. A role ARN is not a credential (the deploy role needs a
+   GitHub OIDC token from an approved run of this repo's `aws-gated`
+   environment, the update role one from this repo's `aws` environment,
+   which only `main` can use, and the corpus-sync role one from a job on
+   this repo's `main`), and the Supabase URL and anon key are the
+   publishable (low-privilege) tier, with Postgres grants/RLS limiting the
+   anon role to aggregate read paths only. The backstop's alert email is
+   not a GitHub variable: it lives only in the Step 3 script.
 
-That's it. No AWS keys were created, and none will be. When the deploy
-workflow first runs you will see a review request in the repo's Actions tab;
-approving it is what releases short-lived credentials to that single run.
+That's it. No AWS keys were created, and none will be. The first deploy
+creates the whole stack, which the update role cannot do, so it waits for
+your approval on `aws-gated`; approving it is what releases short-lived
+deploy-role credentials to that single run. After that first apply,
+re-paste the Step 3 script to arm the cost backstop (section 3d) and to
+print the two knowledge-base ids for the corpus-sync variables.
 
 ---
 
 ## Update for the docs Q&A (RAG) stack (2026-08, ~15 min once)
 
-The RAG extension (see `docs/mcp-rag-design.md`) adds Bedrock, S3 Vectors,
-a corpus bucket, and a cost-backstop budget action to the Terraform stack.
-Before its first deploy, three one-time things need a human:
+The RAG extension (see `docs/mcp-rag-design.md`) added Bedrock, S3
+Vectors, a corpus bucket, and a cost-backstop budget action to the
+Terraform stack. In 2026-11 the backstop moved out of Terraform into the
+human-owned section 3d (see "Update for auto-deploy"); the steps below
+are the ones the 2026-08 deploy needed, updated where that move changed
+them. Before its first deploy, these one-time things need a human:
 
 1. **Refresh the deploy role.** Re-run the Step 3 CloudShell script above
-   (it is idempotent; the policy it writes now includes the RAG
-   permissions). Nothing else in the script changes anything on a re-run.
+   (it is idempotent; the policy it writes includes the RAG
+   permissions).
 2. **Enable the models in Bedrock.** In the console (region Sydney),
    open **Amazon Bedrock, Model catalog**:
    - **Claude Haiku 4.5** (Anthropic): request access. First-time
@@ -851,35 +1448,77 @@ Before its first deploy, three one-time things need a human:
      minutes to auto-subscribe).
    - **Titan Text Embeddings V2** (Amazon): no form; just confirm it
      shows as available.
-3. **Add one repository variable.** In GitHub, alongside the Step 4
-   variables: `ALERT_EMAIL` = the email that should hear when the cost
-   backstop triggers (the budget action's required subscriber).
+3. **The alert email.** In 2026-08 this step added an `ALERT_EMAIL`
+   repository variable, the Terraform budget action's subscriber. Since
+   2026-11 the address is `ALERT_EMAIL` at the top of the Step 3 script
+   and no GitHub variable is involved.
 
 Two budget notes:
 
-- The Step 3 **zero-spend budget will now alert every month** once real
+- The Step 3 **zero-spend budget will alert every month** once real
   (tiny) Bedrock spend begins. That is it working as designed; keep it as
   a heartbeat, or delete/raise it in the console when it becomes noise.
-- After the first apply, verify in **AWS Budgets** that the
-  `bbb-mcp-monthly` budget's action shows **Standby**: that is the armed
-  state of the layer that denies Bedrock access to the server role at
-  100% of budget.
+- After the backstop is armed (section 3d), verify in **AWS Budgets** that
+  the `bbb-backstop-monthly` budget's action shows **Standby**: that is
+  the armed state of the layer that attaches `bbb-backstop-deny` to the
+  four roles that can spend at 100% of budget. The Step 3 script prints
+  the action's status at the end of section 3d.
 
-**If the backstop ever fires** (docs tools start returning errors and the
-budget emails you): the deny policy stays attached across month rollover
-by design -- nothing un-denies itself. To restore service after deciding
-the spend was acceptable, detach it in CloudShell and re-arm the action:
+**If the backstop ever fires** (docs tools start returning errors,
+unattended deploys hit AccessDenied at their state write and wait for an
+approval on `aws-gated`, and the budget emails you):
+the deny policy stays attached across month rollover by design --
+nothing un-denies itself. Neither deploy role can detach it, so a gated
+deploy does not clear it either. To restore service after deciding the
+spend was acceptable, reverse the action in CloudShell. Budgets then
+detaches the deny through the action's own role (`bbb-backstop-action`,
+which holds the detach for exactly these four roles):
 
 ```bash
-aws iam detach-role-policy --role-name bbb-mcp-server-exec \
-  --policy-arn arn:aws:iam::$(aws sts get-caller-identity \
-  --query Account --output text):policy/bbb-mcp-bedrock-deny
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+ACTION_ID=$(aws budgets describe-budget-actions-for-budget \
+  --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+  --region us-east-1 --query 'Actions[0].ActionId' --output text)
+aws budgets execute-budget-action --account-id "${ACCOUNT_ID}" \
+  --budget-name bbb-backstop-monthly --action-id "${ACTION_ID}" \
+  --execution-type REVERSE_BUDGET_ACTION --region us-east-1 \
+  && echo "Reverse requested for ${ACTION_ID}" \
+  || echo "FAILED: reverse not accepted; use the manual detach below"
+# A minute later: the status, and where the deny is still attached.
+aws budgets describe-budget-actions-for-budget \
+  --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+  --region us-east-1 --query 'Actions[].[ActionId,Status]' --output text
+aws iam list-entities-for-policy \
+  --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny" \
+  --query 'PolicyRoles[].RoleName' --output text
 ```
 
-then in the Budgets console reset the `bbb-mcp-monthly` action and confirm
-it shows **Standby** again. `terraform destroy` still works in the
-triggered state (the server role force-detaches policies on destroy), so
-the one-command decommission is unaffected.
+Not yet exercised on this account: the exact status sequence after a
+reverse is unverified until first use. The aim is no role listed under
+the deny and the action back in **Standby** (the deploy workflow's smoke
+test fails on any other status). If it shows `REVERSE_SUCCESS` rather
+than `STANDBY`, reset it, by the same command with `--execution-type
+RESET_BUDGET_ACTION` or from the Budgets console, and check again (or
+re-paste Step 3, which prints the status). Record what the first use
+showed here.
+
+**Fallback: manual detach.** If the reverse fails or leaves the deny
+attached, detach it from every role that holds it, then reset the action
+as above:
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+DENY="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny"
+for r in $(aws iam list-entities-for-policy --policy-arn "${DENY}" \
+    --query 'PolicyRoles[].RoleName' --output text); do
+  aws iam detach-role-policy --role-name "$r" --policy-arn "${DENY}" \
+    && echo "Detached from $r" \
+    || echo "FAILED: still attached to $r"
+done
+```
+
+If the stack is being torn down instead, this manual detach is step 1
+of "Decommissioning": `terraform destroy` cannot detach it.
 
 ---
 
@@ -889,6 +1528,13 @@ the one-command decommission is unaffected.
 stay here because rebuilding the account from scratch needs them, and
 because re-running the Step 3 paste is how any future boundary change is
 applied.
+
+Since 2026-11 ("Update for auto-deploy") the budget-action role is
+human-owned (`bbb-backstop-action`, section 3d), so Terraform creates two
+roles rather than the three below, `bbb-mcp-boundary-iam` caps only that
+hand-made role, and the deploy role can no longer create a role under it.
+The workload boundary's Bedrock model calls are limited to the two models
+the stack uses. The reasoning below is unchanged.
 
 Adds a permissions boundary to each of the three roles Terraform creates
 (`bbb-mcp-server-exec`, `bbb-mcp-kb-role`, `bbb-mcp-budgets-action`). A
@@ -917,21 +1563,24 @@ created or updated.
 
 **Two boundaries, not one, and that split is the point.** The budget
 action's role is the only one that legitimately needs IAM write actions,
-and those actions are scoped to `role/bbb-mcp-server-*` -- a pattern that
-matches the server role itself. A single shared ceiling would therefore
-have let a rewritten server policy detach `bbb-mcp-bedrock-deny`, the cost
-backstop, which denies `bedrock:*` only and so cannot protect itself. So:
+and those actions target the server role itself (since 2026-11, the
+knowledge-base, update and corpus-sync roles too). A single shared
+ceiling would therefore let a rewritten server policy detach the cost
+backstop's deny policy, which denies spending actions, not IAM, and so
+cannot protect itself. So:
 
 - `bbb-mcp-boundary-workload` (server + knowledge-base roles): CloudWatch
-  Logs writes, Bedrock retrieve/generate plus inference-profile lookup,
-  corpus-bucket reads, and S3 Vectors operations. **No IAM actions at all.**
-- `bbb-mcp-boundary-iam` (budget-action role only): exactly the four IAM
-  calls that role makes to attach the deny policy when the backstop fires.
+  Logs writes, Bedrock retrieve/generate, model calls and
+  inference-profile lookup on the stack's two models only, corpus-bucket
+  reads, and S3 Vectors operations. **No IAM actions at all.**
+- `bbb-mcp-boundary-iam` (the backstop's action role only): exactly the
+  four IAM calls that role makes to attach the deny policy when the
+  backstop fires, on exactly the roles it targets.
 
-The deploy policy pins each role-name pattern to its own boundary in both
-the `iam:CreateRole` condition and the `iam:PutRolePermissionsBoundary`
-grant, so a server or knowledge-base role can never be given the IAM
-ceiling. Widening either is a deliberate act that belongs in the same
+The deploy policy pins the workload boundary in both the `iam:CreateRole`
+condition and the `iam:PutRolePermissionsBoundary` grant (in 2026-08 it
+pinned each of the two boundaries to its own role-name pattern), so a
+server or knowledge-base role can never be given the IAM ceiling. Widening either is a deliberate act that belongs in the same
 change as whatever new capability needs it; a boundary that is too tight
 surfaces as an `AccessDenied` at runtime, not at apply time.
 
@@ -960,14 +1609,15 @@ paperwork:
 `terraform destroy` is unaffected: deleting a role with a boundary attached
 needs no extra permission.
 
-The two boundary documents in section 3a and the role policies in
-`infra/*.tf` are separate artifacts that can drift apart in either
+The two boundary documents in section 3a and the role policies they cap
+(in `infra/*.tf`, and the backstop role's in section 3d) are separate
+artifacts that can drift apart in either
 direction, so CI compares them (`tests/infra-boundaries.test.ts`): each
 boundary must allow exactly the union of the actions granted to the roles
 it caps. A role policy that outgrew its boundary would otherwise fail only
 as a runtime `AccessDenied`, and a boundary that outgrew its roles would
 not fail at all. The same test checks the pinning clauses in the deploy
-policy below: no role creation or re-capping without an
+policy: no role creation or re-capping without an
 `iam:PermissionsBoundary` condition, each role name eligible for exactly
 one ceiling, the Deny statements intact, and no path by which the deploy
 role could rewrite its own permissions.
@@ -992,16 +1642,236 @@ issue #101 item).
    this run it creates the corpus-sync role and refreshes the workload
    boundary; nothing else changes.
 2. **Add the four repository variables** the script prints at the end
-   (listed in Step 4.2): `AWS_CORPUS_SYNC_ROLE_ARN`, `MCP_KB_ID`,
+   (listed in Step 4.4): `AWS_CORPUS_SYNC_ROLE_ARN`, `MCP_KB_ID`,
    `MCP_DATA_SOURCE_ID`, `MCP_CORPUS_BUCKET`.
 
 No environment gate for this workflow, on purpose: the merge that landed a
 doc was the editorial decision, and the role is too narrow to touch the
 deployed stack (section 3c's comment carries the reasoning;
 `tests/infra-boundaries.test.ts` and `tests/corpus-sync-workflow.test.ts`
-hold the role and workflow to it). The gated deploy workflow still syncs
-the corpus after each apply, so infra-driven corpus changes (a rebuilt
+hold the role and workflow to it). The deploy workflow also syncs the
+corpus after each apply, so infra-driven corpus changes (a rebuilt
 knowledge base, say) do not wait for the next doc merge.
+
+---
+
+## Update for auto-deploy (2026-11, ~30 min once)
+
+Moves the MCP deploy from "every run waits for an approval" to two roles:
+code-only changes deploy unattended under the update role (section 3e,
+environment `aws`), and everything else waits for one approval under the
+deploy role (section 3b, environment `aws-gated`). The cost backstop moves
+out of Terraform into the human-owned section 3d, so neither role can
+change it. The design and its reasoning are in
+`docs/mcp-auto-deploy-design.md`; the role comments in Step 3 carry each
+role's bounds.
+
+The live account stays protected throughout: additive first, then the
+merge (which makes Terraform forget the old backstop without deleting
+it), then the narrowing. Do the steps in this order.
+
+0. **Check this month's spend against the new limit, BEFORE Paste A.**
+   The new backstop's action fires once actual spend reaches 100% of
+   `BACKSTOP_LIMIT_USD`, and a new action on a budget already past that
+   fires within hours, with a wider deny than the old one (Bedrock, log
+   ingestion and S3 writes, on four roles, the update role included). In
+   CloudShell, read the old budget's live limit and month-to-date actual
+   spend (Budgets reads are free):
+
+   ```bash
+   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+   aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
+     --budget-name bbb-mcp-monthly --region us-east-1 \
+     --query 'Budget.{limit: BudgetLimit.Amount, actual_mtd: CalculatedSpend.ActualSpend.Amount}' \
+     --output table
+   ```
+
+   Or, for the whole account's month-to-date cost (each Cost Explorer API
+   call is billed at 0.01 USD):
+
+   ```bash
+   aws ce get-cost-and-usage --granularity MONTHLY --metrics UnblendedCost \
+     --time-period "Start=$(date -u +%Y-%m-01),End=$(date -u -d tomorrow +%Y-%m-%d)" \
+     --query 'ResultsByTime[0].Total.UnblendedCost' --output table
+   ```
+
+   Set `BACKSTOP_LIMIT_USD` to the old budget's limit unless you mean to
+   change it. If month-to-date spend is at or near that value, either
+   raise `BACKSTOP_LIMIT_USD` above it with headroom for the rest of the
+   month, or wait for the month to roll over before Paste A.
+1. **Paste A: CloudShell, BEFORE merging** (additive, idempotent). Edit
+   the top of the Step 3 script: set `ALERT_EMAIL`, `BACKSTOP_LIMIT_USD`
+   (step 0) and `DEPLOY_ROLE_STAGE="transition"`. Paste the whole script,
+   then scroll back for any `FAILED` line. On this run it:
+   - creates the update role `bbb-mcp-update` (3e);
+   - arms the new `bbb-backstop-*` resources (3d), a second backstop
+     alongside the old Terraform-managed `bbb-mcp-monthly` one;
+   - narrows the workload boundary to the two models, and widens
+     `bbb-mcp-boundary-iam` to the four roles the new backstop targets
+     (3a);
+   - adds the `aws-gated` subject to the deploy role's trust, keeping the
+     `aws` one, and leaves the deploy role's POLICY as it was (3b,
+     transition branch).
+
+   Check the output says "transition; policy unchanged" for the deploy
+   role and shows the backstop action in `STANDBY`. Then ask the docs Q&A
+   tool one question through any MCP client using the private key: an
+   access error now means the boundary's model ARNs do not match what the
+   server calls, and the fix is to correct section 3a and re-paste before
+   going further.
+
+   Do not paste with `DEPLOY_ROLE_STAGE="final"` yet. The narrowed deploy
+   policy cannot read the old backstop, and the merge's gated run has to
+   read it in order to forget it.
+2. **Console and GitHub, still before merging.**
+   - **Read the two Bedrock rate quotas.** In CloudShell:
+
+     ```bash
+     aws service-quotas list-service-quotas --service-code bedrock \
+       --query "Quotas[?contains(QuotaName, 'Haiku 4.5') || contains(QuotaName, 'Titan Text Embeddings V2')].[QuotaName,Value]" \
+       --output table
+     ```
+
+     Note the requests-per-minute and tokens-per-minute values for both
+     models. On 2026-11-11 they were read and left at the AWS defaults
+     (design D4).
+   - **Create the `aws-gated` environment** exactly as Step 4.2
+     describes (you as required reviewer, admin bypass unticked, `main`
+     only). Leave `aws` as it is for now: it keeps its reviewer until
+     step 5.
+   - **Add the `AWS_UPDATE_ROLE_ARN` repository variable**
+     (`arn:aws:iam::<account-id>:role/bbb-mcp-update`, printed by the
+     script).
+   - **Protect `main`** as Step 4.3 describes.
+3. **Merge.** `aws` still has its reviewer, so the push run first asks
+   you to approve the unattended job. That job routes to the gated job
+   either way: its plan hits AccessDenied reading the old backstop, or,
+   if the read succeeds, the classifier gates the plan's `forget`
+   actions. The gated job asks for a second approval on `aws-gated`.
+   That apply forgets the five old backstop resources (the `removed`
+   blocks in `infra/rag.tf`) without deleting them. Approve both.
+4. **Paste B: CloudShell, only after that gated apply succeeds.** Never
+   run it early: deleting the old backstop while Terraform still tracks
+   it would make the next plan try to recreate it. First, on GitHub,
+   confirm the merge's run shows `deploy-gated` succeeded and that its
+   job summary ("Plan with the deploy role (gated)") lists these five
+   lines with `[forget]`:
+
+   ```text
+   aws_budgets_budget_action.deny_bedrock
+   aws_budgets_budget.mcp
+   aws_iam_role_policy.budgets
+   aws_iam_role.budgets
+   aws_iam_policy.bedrock_deny
+   ```
+
+   The block below checks the same thing against the Terraform state
+   (resource addresses only, never values) and stops if any of the five
+   is still there. It then deletes the old backstop, in this order: the
+   budget action first, so it cannot fire again while the rest goes, then
+   the budget, the old deny's attachments, the action role, and the deny
+   policy. Each step skips what is already gone, and the block stops at
+   the first failure (it runs in a subshell, so the session stays open);
+   fix the cause and re-run it whole.
+
+   ```bash
+   (
+   set -uo pipefail
+   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+   OLD_DENY="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-bedrock-deny"
+   STATE="s3://bbb-mcp-tfstate-${ACCOUNT_ID}/bbb-mcp/terraform.tfstate"
+
+   # 0. Terraform must have forgotten all five old resources.
+   ADDRS=$(aws s3 cp "${STATE}" - | jq -r '.resources[] | select(.mode == "managed") | "\(.type).\(.name)"') \
+     && [ -n "${ADDRS}" ] \
+     || { echo "FAILED: could not read the Terraform state; stopping"; exit 1; }
+   LEFT=$(printf '%s\n' "${ADDRS}" | grep -xE 'aws_budgets_budget_action\.deny_bedrock|aws_budgets_budget\.mcp|aws_iam_role_policy\.budgets|aws_iam_role\.budgets|aws_iam_policy\.bedrock_deny')
+   if [ -n "${LEFT}" ]; then
+     echo "STOP: Terraform still tracks:"; echo "${LEFT}"
+     echo "The merge's gated apply has not forgotten them yet; nothing deleted."
+     exit 1
+   fi
+   echo "State check passed: the old backstop is no longer in Terraform state"
+
+   # 1. The old budget action, then the old budget. ResourceLocked from
+   #    delete-budget-action means the action is mid-execution: wait a
+   #    few minutes and re-run this block.
+   if aws budgets describe-budget --account-id "${ACCOUNT_ID}" \
+       --budget-name bbb-mcp-monthly --region us-east-1 >/dev/null 2>&1; then
+     for a in $(aws budgets describe-budget-actions-for-budget \
+         --account-id "${ACCOUNT_ID}" --budget-name bbb-mcp-monthly \
+         --region us-east-1 --query 'Actions[].ActionId' --output text); do
+       aws budgets delete-budget-action --account-id "${ACCOUNT_ID}" \
+         --budget-name bbb-mcp-monthly --action-id "$a" \
+         --region us-east-1 >/dev/null \
+         || { echo "FAILED: old budget action $a not deleted (ResourceLocked: wait, then re-run)"; exit 1; }
+       echo "Deleted old budget action $a"
+     done
+     aws budgets delete-budget --account-id "${ACCOUNT_ID}" \
+       --budget-name bbb-mcp-monthly --region us-east-1 \
+       || { echo "FAILED: old budget not deleted"; exit 1; }
+     echo "Deleted old budget bbb-mcp-monthly"
+   fi
+
+   # 2. Detach the old deny policy wherever it is attached (only if it
+   #    ever fired). Its action is gone, so it cannot re-attach.
+   if aws iam get-policy --policy-arn "${OLD_DENY}" >/dev/null 2>&1; then
+     for r in $(aws iam list-entities-for-policy --policy-arn "${OLD_DENY}" \
+         --query 'PolicyRoles[].RoleName' --output text); do
+       aws iam detach-role-policy --role-name "$r" --policy-arn "${OLD_DENY}" \
+         || { echo "FAILED: old deny not detached from $r"; exit 1; }
+       echo "Detached old deny from $r"
+     done
+   fi
+
+   # 3. The old action role's inline policy, then the role.
+   if aws iam get-role --role-name bbb-mcp-budgets-action >/dev/null 2>&1; then
+     aws iam delete-role-policy --role-name bbb-mcp-budgets-action \
+       --policy-name bbb-mcp-budgets-policy 2>/dev/null
+     aws iam delete-role --role-name bbb-mcp-budgets-action \
+       || { echo "FAILED: old role bbb-mcp-budgets-action not deleted"; exit 1; }
+     echo "Deleted old role bbb-mcp-budgets-action"
+   fi
+
+   # 4. The old deny policy (non-default versions first).
+   if aws iam get-policy --policy-arn "${OLD_DENY}" >/dev/null 2>&1; then
+     for v in $(aws iam list-policy-versions --policy-arn "${OLD_DENY}" \
+         --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
+       aws iam delete-policy-version --policy-arn "${OLD_DENY}" --version-id "$v"
+     done
+     aws iam delete-policy --policy-arn "${OLD_DENY}" \
+       || { echo "FAILED: old policy bbb-mcp-bedrock-deny not deleted"; exit 1; }
+     echo "Deleted old policy bbb-mcp-bedrock-deny"
+   fi
+   echo "Old backstop deleted"
+   )
+   ```
+
+   Then set `DEPLOY_ROLE_STAGE="final"` at the top of the Step 3 script
+   and paste it again. On this run it replaces the deploy role's policy
+   with the narrowed one plus the backstop Denies, and rewrites its trust
+   to the `aws-gated` subject only. Check the output says "Deploy role
+   trust: aws-gated only" and "Deploy policy attached", with no `FAILED`
+   line.
+5. **GitHub.** Remove the required reviewer from the `aws` environment
+   (keep its `main`-only branch rule), and delete the `ALERT_EMAIL`
+   repository variable, which nothing reads any more.
+6. **Verify.** Dispatch the deploy workflow with `apply` on `main`. It
+   should run unattended on `aws` to "no changes" and pass its smoke
+   test, without asking for an approval. Confirm the deploy role trusts
+   only `aws-gated`:
+
+   ```bash
+   aws iam get-role --role-name bbb-mcp-deploy \
+     --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition' --output json
+   ```
+
+   Then record the dated events in `PLAN.md`.
+
+**Rollback.** Adding a reviewer back to `aws` stops unattended deploys at
+once: every run then waits for an approval. Never move the backstop back
+into Terraform without `import` blocks, or Terraform will try to create
+resources that already exist.
 
 ---
 
@@ -1031,22 +1901,97 @@ the distributed key can be rotated on a whim or after abuse without touching
 the private one, and exhausting one never affects the other.
 
 Rotation is self-serve: delete the key in CloudShell (or have Terraform
-replace it), re-apply, then re-run the matching command above.
+replace it), then run the deploy workflow. Recreating a key is an API
+Gateway change, which the update role cannot make, so that run waits for
+one approval on `aws-gated`. Then re-run the matching command above.
+
+Both deploy roles can read the key values (`apigateway:GET`, which
+Terraform's refresh needs), which is why the deploy workflow never prints
+or uploads the plan. A leaked key spends that key's monthly quota and
+nothing more; rotate it as above.
 
 ## Decommissioning (for reference, not now)
 
-The whole stack is one Terraform root module, so teardown is:
+The deployed stack is one Terraform root module; the hand-made resources
+around it are not, and two of them must go for the exit to stick. Teardown,
+in this order:
 
-1. Run the deploy workflow in destroy mode (or `terraform destroy` from a
-   session), which removes the Lambda, API, key, and logs.
-2. Optionally, in CloudShell: delete the deploy role, the corpus-sync role
-   (neither is Terraform-managed, so both outlive a destroy -- and the
-   corpus-sync role keeps trusting GitHub OIDC, with a grant on the
-   deterministically-named corpus bucket that would go live again if the
-   stack were ever rebuilt), the OIDC provider, state bucket, budget, and
-   the two `bbb-mcp-boundary-*` policies (the reverse of Step 3). Delete the boundary policies LAST, and only as part of a
-   full teardown: while the deploy role still exists, its `iam:CreateRole`
-   is conditioned on a boundary that would no longer be there, so a later
-   rebuild fails at apply time until Step 3 is re-run to recreate them.
-3. The account itself can then be closed from the console if it is no
+1. **Detach the backstop deny, in CloudShell: REQUIRED if the backstop
+   has fired**, harmless otherwise, so run it either way. Neither deploy
+   role may detach `bbb-backstop-deny`, and IAM refuses to delete a role
+   with a managed policy attached (`DeleteConflict`), so otherwise the
+   destroy fails at the server and knowledge-base roles, and steps 3 to 5
+   fail at the update and corpus-sync roles and the deny policy itself.
+   Run the manual detach loop ("Fallback: manual detach") in "If the
+   backstop ever fires" above, and check it prints no `FAILED` line.
+   Steps 3 and 4 below also detach before deleting, so a missed step 1
+   cannot leave them stuck.
+2. **Destroy the stack.** Run the deploy workflow in destroy mode, which
+   always runs on the gated path (one approval on `aws-gated`). It
+   removes the Lambda, API, keys, logs, the knowledge base, the vector
+   store and the corpus bucket.
+3. **Delete both deploy roles, in CloudShell: required.** A later merge to
+   `main` would otherwise trigger the deploy workflow and, with one
+   approval, rebuild the stack, and licence cl 4.6 bars using the
+   Licensed Data or derived products after termination. Detach any
+   managed policy (the backstop deny, if it fired), delete each role's
+   inline policy, then the role:
+
+   ```bash
+   for r in bbb-mcp-update bbb-mcp-deploy; do
+     for p in $(aws iam list-attached-role-policies --role-name "$r" \
+         --query 'AttachedPolicies[].PolicyArn' --output text); do
+       aws iam detach-role-policy --role-name "$r" --policy-arn "$p"
+     done
+     aws iam delete-role-policy --role-name "$r" --policy-name "$r-policy"
+     aws iam delete-role --role-name "$r" \
+       && echo "Deleted $r" \
+       || echo "FAILED: $r NOT deleted; fix the error above and re-run"
+   done
+   ```
+
+   Also disable the deploy workflow (Actions, the workflow, **Disable
+   workflow**), so later merges do not start runs that fail at
+   authentication and open issues.
+4. **Delete the backstop, in CloudShell**, after the stack is gone: the
+   budget action, then the budget, then the action role's inline policy
+   and the role, then the deny policy.
+
+   ```bash
+   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+   for a in $(aws budgets describe-budget-actions-for-budget \
+       --account-id "${ACCOUNT_ID}" --budget-name bbb-backstop-monthly \
+       --region us-east-1 --query 'Actions[].ActionId' --output text); do
+     aws budgets delete-budget-action --account-id "${ACCOUNT_ID}" \
+       --budget-name bbb-backstop-monthly --action-id "$a" --region us-east-1
+   done
+   aws budgets delete-budget --account-id "${ACCOUNT_ID}" \
+     --budget-name bbb-backstop-monthly --region us-east-1
+   aws iam delete-role-policy --role-name bbb-backstop-action \
+     --policy-name bbb-backstop-action-policy
+   aws iam delete-role --role-name bbb-backstop-action
+   DENY="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-backstop-deny"
+   # Any role still holding the deny (the corpus-sync role, if it fired
+   # and step 1 was missed) would block the policy's deletion.
+   for r in $(aws iam list-entities-for-policy --policy-arn "${DENY}" \
+       --query 'PolicyRoles[].RoleName' --output text); do
+     aws iam detach-role-policy --role-name "$r" --policy-arn "${DENY}"
+   done
+   for v in $(aws iam list-policy-versions --policy-arn "${DENY}" \
+       --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
+     aws iam delete-policy-version --policy-arn "${DENY}" --version-id "$v"
+   done
+   aws iam delete-policy --policy-arn "${DENY}" \
+     && echo "Backstop deleted" \
+     || echo "FAILED: bbb-backstop-deny NOT deleted; fix the error above and re-run"
+   ```
+5. **Optionally, the rest, in CloudShell:** the corpus-sync role (it keeps
+   trusting GitHub OIDC, with a grant on the deterministically-named
+   corpus bucket that would go live again if the stack were ever
+   rebuilt), the OIDC provider, the state bucket, the zero-spend budget,
+   and the two `bbb-mcp-boundary-*` policies (the reverse of Step 3).
+   Delete the boundary policies LAST, and only as part of a full
+   teardown: the backstop role is capped by one of them, and a rebuild
+   needs them back (re-running Step 3 recreates them, with the roles).
+6. The account itself can then be closed from the console if it is no
    longer wanted.

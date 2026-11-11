@@ -17,20 +17,24 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
 
-  # Permissions ceilings for the roles this stack creates. Created by a human in
-  # the bootstrap (infra/BOOTSTRAP.md step 3a), NOT by Terraform: the deploy role
-  # can version bbb-mcp-* policies, so a Terraform-managed boundary could be
+  # Permissions ceiling for the roles this stack creates. Created by a human in
+  # the bootstrap (infra/BOOTSTRAP.md section 3a), NOT by Terraform: the deploy
+  # role can version bbb-mcp-* policies, so a Terraform-managed boundary could be
   # widened by the very thing it is meant to constrain. Terraform only references
-  # and attaches them; the deploy policy denies creating or editing them.
+  # and attaches it; the deploy policy denies creating or editing it.
   #
-  # Two, because the budget action's role is the only one that legitimately needs
-  # IAM write actions. Folding those into a single shared ceiling would also hand
-  # them to the server role -- whose name matches the role/bbb-mcp-server-*
-  # resource they are scoped to -- letting a rewritten server policy detach the
-  # bedrock-deny cost backstop (which denies bedrock:* only, so it cannot protect
-  # itself). Keeping IAM out of the workload ceiling closes that path.
+  # The workload ceiling carries no IAM actions at all. The bootstrap's second
+  # boundary, bbb-mcp-boundary-iam, caps only the human-owned backstop role
+  # (section 3d) and is not referenced here: the deploy role cannot create a
+  # role under it. Keeping IAM out of the workload ceiling means no rewritten
+  # server or knowledge-base policy can detach the backstop deny attached to
+  # those same roles.
+  #
+  # The workload ceiling also names the Bedrock models below by exact ARN
+  # (titan_embed_arn, rag_profile_arn, rag_model_region_arns). A model change
+  # here needs the matching edit to section 3a, re-pasted BEFORE the deploy;
+  # tests/infra-boundaries.test.ts holds the two equal.
   boundary_workload = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/bbb-mcp-boundary-workload"
-  boundary_iam      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/bbb-mcp-boundary-iam"
 
   # Titan V2 is in-region; its ARN carries no account id.
   titan_embed_arn = "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v2:0"
@@ -50,7 +54,8 @@ locals {
 # Corpus bucket: the markdown docs the knowledge base indexes. Private;
 # written only by CI, as an s3 sync of the curated manifest (see
 # docs/mcp-rag-design.md for which workflows do that).
-# force_destroy keeps `terraform destroy` a one-command decommission.
+# force_destroy lets `terraform destroy` remove it in one command (the full
+# decommission, with the hand-made resources, is BOOTSTRAP "Decommissioning").
 
 resource "aws_s3_bucket" "corpus" {
   bucket        = "bbb-mcp-corpus-${local.account_id}"
@@ -222,7 +227,7 @@ resource "aws_bedrockagent_data_source" "docs" {
 # base, generation through the au. Haiku profile, nothing else.
 # bedrock:RetrieveAndGenerate is not resource-scopeable, hence "*" on
 # that single action; the models it can reach are still bounded by the
-# InvokeModel statement.
+# InvokeModel statement, and by the workload boundary's model list.
 
 resource "aws_iam_role_policy" "server_rag" {
   name = "bbb-mcp-server-rag"
@@ -267,112 +272,54 @@ resource "aws_iam_role_policy" "server_rag" {
 }
 
 # ---------------------------------------------------------------------------
-# Cost backstop enforced by AWS itself (layer 4 in the design doc): a
-# small account-wide budget on actual costs whose action attaches a
-# customer-managed Deny bedrock:* policy to the Lambda execution role at
-# 100% of budget, ending paid generation even if every other layer were
-# bypassed. Budgets cost data lags by hours; the usage-plan quota and
-# per-request caps bound spending inside that window.
+# Cost backstop: not in this stack. The budget, its action, the deny
+# policy and the action's role moved out of Terraform in 2026-11 and are
+# created by a human in infra/BOOTSTRAP.md section 3d, named bbb-backstop-*,
+# outside every pattern either deploy role can write. Both deploy roles carry an
+# explicit Deny on writing them or detaching the deny policy.
+#
+# These blocks make Terraform forget the five resources it used to manage
+# without destroying them (BOOTSTRAP "Update for auto-deploy" deletes them
+# by hand afterwards). On a state that never held them they are no-ops.
+# Reverting the handover needs `import` blocks, not the old resource
+# blocks, or Terraform would try to create resources that already exist.
 
-resource "aws_iam_policy" "bedrock_deny" {
-  name        = "bbb-mcp-bedrock-deny"
-  description = "Attached to the server role by the budget action to stop all Bedrock calls"
+removed {
+  from = aws_budgets_budget_action.deny_bedrock
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "DenyAllBedrock"
-      Effect   = "Deny"
-      Action   = ["bedrock:*"]
-      Resource = ["*"]
-    }]
-  })
-}
-
-resource "aws_iam_role" "budgets" {
-  name                 = "bbb-mcp-budgets-action"
-  description          = "Execution role for the BBB MCP budget action"
-  permissions_boundary = local.boundary_iam
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "budgets.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-      Condition = {
-        StringEquals = { "aws:SourceAccount" = local.account_id }
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "budgets" {
-  name = "bbb-mcp-budgets-policy"
-  role = aws_iam_role.budgets.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        # Pinned to the one deny policy via iam:PolicyARN, so this role
-        # can never be steered into attaching anything else to the server
-        # role (e.g. by a rewritten budget action definition).
-        Sid    = "AttachDenyToServerRole"
-        Effect = "Allow"
-        Action = [
-          "iam:AttachRolePolicy",
-          "iam:DetachRolePolicy",
-        ]
-        Resource = [aws_iam_role.server_exec.arn]
-        Condition = {
-          ArnEquals = { "iam:PolicyARN" = aws_iam_policy.bedrock_deny.arn }
-        }
-      },
-      {
-        Sid    = "InspectServerRole"
-        Effect = "Allow"
-        Action = [
-          "iam:GetRole",
-          "iam:ListAttachedRolePolicies",
-        ]
-        Resource = [aws_iam_role.server_exec.arn]
-      },
-    ]
-  })
-}
-
-resource "aws_budgets_budget" "mcp" {
-  name         = "bbb-mcp-monthly"
-  budget_type  = "COST"
-  limit_amount = var.budget_limit_usd
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
-}
-
-resource "aws_budgets_budget_action" "deny_bedrock" {
-  budget_name        = aws_budgets_budget.mcp.name
-  action_type        = "APPLY_IAM_POLICY"
-  approval_model     = "AUTOMATIC"
-  notification_type  = "ACTUAL"
-  execution_role_arn = aws_iam_role.budgets.arn
-
-  action_threshold {
-    action_threshold_type  = "PERCENTAGE"
-    action_threshold_value = 100
+  lifecycle {
+    destroy = false
   }
+}
 
-  definition {
-    iam_action_definition {
-      policy_arn = aws_iam_policy.bedrock_deny.arn
-      roles      = [aws_iam_role.server_exec.name]
-    }
+removed {
+  from = aws_budgets_budget.mcp
+
+  lifecycle {
+    destroy = false
   }
+}
 
-  subscriber {
-    address           = var.budget_alert_email
-    subscription_type = "EMAIL"
+removed {
+  from = aws_iam_role_policy.budgets
+
+  lifecycle {
+    destroy = false
   }
+}
 
-  depends_on = [aws_iam_role_policy.budgets]
+removed {
+  from = aws_iam_role.budgets
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_iam_policy.bedrock_deny
+
+  lifecycle {
+    destroy = false
+  }
 }

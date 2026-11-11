@@ -1,0 +1,87 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_lambda_function.server",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "function_name": "bbb-mcp-server",
+          "timeout": 25,
+          "source_code_hash": "SAMEHASH=",
+          "environment": [
+            {
+              "variables": {
+                "SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print",
+                "SUPABASE_URL": "https://example.supabase.co"
+              }
+            }
+          ],
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          }
+        },
+        "after": {
+          "function_name": "bbb-mcp-server",
+          "timeout": 25,
+          "source_code_hash": "SAMEHASH=",
+          "environment": [
+            {
+              "variables": {
+                "SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print",
+                "SUPABASE_URL": "https://example.supabase.co",
+                "BBB_STALENESS_MINUTES": "360"
+              }
+            }
+          ],
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          }
+        },
+        "after_unknown": {
+          "last_modified": true,
+          "environment": [
+            {
+              "variables": {}
+            }
+          ],
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_api_gateway_api_key.mcp",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

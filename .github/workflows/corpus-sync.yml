@@ -1,7 +1,10 @@
 # Publishes the docs corpus to the RAG knowledge base whenever a corpus
-# doc changes on main. Runs ungated, unlike mcp-deploy.yml, because the
-# merge that landed the doc was already the editorial decision; approving
-# a re-publish of reviewed markdown adds no second look at anything.
+# doc changes on main. Runs ungated because the merge that landed the doc
+# was already the editorial decision; approving a re-publish of reviewed
+# markdown adds no second look at anything. mcp-deploy.yml ignores
+# markdown changes, so doc edits publish only through here, and its
+# unattended code deploys never re-sync the corpus (only its gated job
+# does, when a plan changes the knowledge base).
 #
 # Security model:
 # - Assumes the bbb-mcp-corpus-sync role via GitHub OIDC. That role is
@@ -17,8 +20,11 @@
 #   that requests a token matches it, not only this workflow's pushes.
 #   AWS web identity federation can condition on aud/azp/amr/sub alone,
 #   so no trust-policy clause can narrow it to one workflow file. What
-#   narrows it instead is that the role can only republish docs, and a
-#   test pinning which workflows may request a token at all.
+#   narrows it instead is that the role can only republish docs, and
+#   tests pinning which workflows may request a token at all and that
+#   every other job requesting one declares an environment (so its
+#   subject is the environment, not the main ref). This job is the one
+#   deliberate exception: it declares no environment.
 # - The paths filter below must list exactly the files in
 #   mcp/corpus-manifest.txt (plus this workflow's own inputs); the same
 #   test fails the build if they drift apart.
