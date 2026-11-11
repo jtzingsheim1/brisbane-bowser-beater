@@ -12,10 +12,11 @@ report it with a recommendation. Keep the report short: what merged, then
 only the decisions needed.
 
 Standing decisions about specific dependencies, such as a major that is
-blocked upstream, live in open GitHub issues labelled `dependencies`: follow
-them instead of re-deriving them, and don't update, rebase or re-run CI on a
-PR one of them parks. Record a new maintainer decision as such an issue, and
-close it when the decision no longer applies.
+blocked upstream, live in open GitHub issues labelled `parked-dependency`
+(not `dependencies`, which Dependabot puts on its own PRs): follow them instead
+of re-deriving them, and don't update, rebase or re-run CI on a PR one of them
+parks. Record a new maintainer decision as such an issue, and close it when the
+decision no longer applies. No such issue means nothing is parked.
 
 ```
 - [ ] Sync with main
