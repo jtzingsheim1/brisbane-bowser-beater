@@ -176,11 +176,13 @@ notes are excluded, and a test enforces that.
 Generation is the MCP server's only paid call, so it sits behind
 layered guards that AWS itself enforces rather than the code: a monthly
 request quota on the API key, per-request caps (input length, retrieved
-chunks, output tokens, single attempt with no retries), and a budget action
-that attaches a `Deny bedrock:*` policy to the server role at 100% of a small
-monthly budget (`budget_limit_usd` in the Terraform stack). Every IAM role in
+chunks, output tokens, single attempt with no retries), Bedrock rate quotas
+on the only two models the stack may call, and a hand-made budget backstop,
+outside the Terraform stack, that denies Bedrock and other spending to every
+role that can spend once a small monthly budget is used up. Every IAM role in
 the stack also carries a permissions boundary it
-cannot widen. Design notes are in
+cannot widen. Code-only changes deploy on merge under a narrow role that
+cannot touch IAM or the gateway; anything else waits for one human approval. Design notes are in
 [`docs/mcp-rag-design.md`](docs/mcp-rag-design.md); the full security posture
 is in [`mcp/README.md`](mcp/README.md).
 

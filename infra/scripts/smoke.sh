@@ -98,7 +98,7 @@ for status in $statuses; do
     STANDBY) ;;
     EXECUTION_IN_PROGRESS|EXECUTION_SUCCESS)
       fired=true
-      echo "::warning::smoke: the cost backstop has fired (budget action $status). Deploys continue; the corpus sync is skipped. See infra/BOOTSTRAP.md, 'If the backstop ever fires'." ;;
+      echo "::warning::smoke: the cost backstop has fired (budget action $status). Its deny blocks the update role's Terraform state writes, so unattended deploys route to the gated path (one approval) until it is reset; the corpus sync is skipped. See infra/BOOTSTRAP.md, 'If the backstop ever fires'." ;;
     *)
       fail "budget action on $BUDGET_NAME is $status; expected STANDBY (see infra/BOOTSTRAP.md)" ;;
   esac

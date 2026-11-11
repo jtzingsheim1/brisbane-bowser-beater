@@ -1025,8 +1025,9 @@ echo "Update policy attached"
 # Nothing un-denies itself: once fired, the deny stays attached across
 # month rollover until a human resets it ("If the backstop ever
 # fires", below). While it is attached, gated deploys still work (the
-# deploy role is not a target), but unattended deploys fail at their
-# Terraform state write (s3:PutObject).
+# deploy role is not a target), but unattended deploys hit
+# AccessDenied at their Terraform state write (s3:PutObject) and
+# route to the gated path, so each deploy waits for one approval.
 #
 # Runs only once all four target roles exist. On a fresh account the
 # two Terraform roles appear at the stack's first apply, so this
@@ -1428,7 +1429,8 @@ Two budget notes:
   the action's status at the end of section 3d.
 
 **If the backstop ever fires** (docs tools start returning errors,
-unattended deploys fail at their state write, and the budget emails you):
+unattended deploys hit AccessDenied at their state write and wait for an
+approval on `aws-gated`, and the budget emails you):
 the deny policy stays attached across month rollover by design --
 nothing un-denies itself. Neither deploy role can detach it, so a gated
 deploy does not clear it either. To restore service after deciding the

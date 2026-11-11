@@ -54,7 +54,8 @@ locals {
 # Corpus bucket: the markdown docs the knowledge base indexes. Private;
 # written only by CI, as an s3 sync of the curated manifest (see
 # docs/mcp-rag-design.md for which workflows do that).
-# force_destroy keeps `terraform destroy` a one-command decommission.
+# force_destroy lets `terraform destroy` remove it in one command (the full
+# decommission, with the hand-made resources, is BOOTSTRAP "Decommissioning").
 
 resource "aws_s3_bucket" "corpus" {
   bucket        = "bbb-mcp-corpus-${local.account_id}"
