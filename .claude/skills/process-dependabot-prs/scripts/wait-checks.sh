@@ -7,7 +7,8 @@
 #
 # Counts GitHub Actions jobs only from push and pull_request runs, so
 # scheduled, manually dispatched and Dependabot-internal runs attached to the
-# same commit (common on main) are ignored. Also counts other apps' checks and
+# same commit (common on main) are ignored, and never from the mcp-deploy
+# workflow, whose outcome wait-mcp-deploy.sh reports. Also counts other apps' checks and
 # commit statuses, such as Vercel's. Reports only once the PR is not behind main
 # and nothing has changed for SETTLE_SECONDS: a follow-on check, such as an
 # uploaded code-scanning result, registers a few seconds after the job that
@@ -59,7 +60,11 @@ d = sys.argv[1]
 def pages(prefix, key):
     for f in sorted(glob.glob(os.path.join(d, prefix + "-*.json"))):
         yield from json.load(open(f)).get(key, [])
-ci_suites = {r["check_suite_id"] for p in ("runs_push", "runs_pr") for r in pages(p, "workflow_runs")}
+# mcp-deploy is a deploy, not CI: a gated run waiting for approval must not
+# read as pending or failed. Matched by workflow file, which outlives a rename.
+deploy = lambda r: (r.get("path") or "").split("@")[0] == ".github/workflows/mcp-deploy.yml"
+ci_suites = {r["check_suite_id"] for p in ("runs_push", "runs_pr") for r in pages(p, "workflow_runs")
+             if not deploy(r)}
 items = [(r["name"], r["status"], r["conclusion"] or "") for r in pages("check_runs", "check_runs")
          if r["app"]["slug"] != "github-actions" or r["check_suite"]["id"] in ci_suites]
 status = json.load(open(os.path.join(d, "status.json")))

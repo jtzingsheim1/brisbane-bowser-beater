@@ -1,22 +1,72 @@
 # Deploys the MCP subproject (mcp/ + infra/) to AWS.
 #
-# Security model:
-# - No long-lived AWS credentials exist anywhere. This job assumes the
-#   bootstrap-created bbb-mcp-deploy role via GitHub OIDC; the role's trust
-#   policy only matches this repo's `aws` environment, and that environment
-#   requires a human reviewer -- so credentials can only ever be minted for
-#   a run a human has approved, from main.
-# - Every action is pinned to a commit SHA (this workflow holds OIDC write
-#   access, so no mutable tags).
-# - The stack's API key value never appears in outputs or logs; it is
-#   retrieved by the operator in CloudShell (see infra/BOOTSTRAP.md).
+# Design: docs/mcp-auto-deploy-design.md. Job graph:
 #
-# Manual-only (workflow_dispatch): choose plan (preview), apply (deploy),
-# or destroy (full decommission of the stack).
+#   build ──> deploy ──┬──> deploy-gated ──┐
+#                      └──> notify-gated ──┼──> report
+#   (build and deploy) ────────────────────┘
+#
+# - build: no AWS, no OIDC token, no environment. Typechecks, tests and
+#   bundles mcp/, and uploads mcp/dist as an artifact (the bundle is not
+#   secret).
+# - deploy: environment `aws` (no reviewer, main only), unattended. Assumes
+#   the bbb-mcp-update role, which can update the Lambda's code and tags
+#   and nothing structural (no IAM write, no PassRole, no Lambda
+#   configuration, no API Gateway write). Plans, then
+#   infra/scripts/classify-plan.mjs routes the plan:
+#     routine  code hash or tags only: apply the saved plan, smoke test;
+#     noop     nothing to change: smoke test only;
+#     gated    anything else, or AccessDenied during plan or apply: hand
+#              over to deploy-gated.
+#   A dispatched `plan` stops after printing and never routes to gated.
+# - deploy-gated: environment `aws-gated` (required reviewer, main only).
+#   Assumes the bbb-mcp-deploy role after one human approval, re-plans,
+#   applies, smoke tests. The only job that can destroy, and only on a
+#   dispatched `destroy`.
+# - notify-gated / report: open or comment on an issue labelled
+#   `mcp-deploy` (assigned to the repo owner, so GitHub emails it) when a
+#   run fails or waits for approval; close open ones after a successful
+#   deploy. They hold `issues: write` and no AWS access. A dispatched
+#   destroy waiting for approval opens no issue: the maintainer started it,
+#   so they already know it is waiting (notify-gated keys on deploy's
+#   gated route, and deploy is skipped on destroy).
+#
+# Security model (section 4 of the design): workflow code and tests on main
+# are attacker-controlled in the threat model, so the plan classifier and
+# the smoke test are accident guards. The controls are IAM, role trust and
+# AWS quotas: each role's OIDC trust matches one GitHub environment, and the
+# update role cannot reshape anything. The plan file and its JSON hold prior
+# state (API key values included), so they never leave the runner, are
+# never printed, and are deleted at the end of each job.
+#
+# Every action is pinned to a commit SHA (jobs here mint OIDC tokens, so no
+# mutable tags). The stack's API key values never appear in outputs or
+# logs; the operator retrieves them in CloudShell (infra/BOOTSTRAP.md).
+#
+# Retrying a failed run: dispatch `apply` on main. Never re-run an old run;
+# it would deploy that run's (older) commit over a newer deploy.
 
 name: Deploy MCP stack
+# The action is in the title because the runs API does not expose dispatch
+# inputs; the Dependabot skill's wait-mcp-deploy.sh tells dispatched plan
+# and destroy runs apart by it.
+run-name: "Deploy MCP stack (${{ inputs.action || 'push' }})"
 
 on:
+  push:
+    branches: [main]
+    # Negations must follow the positive patterns: GitHub evaluates the
+    # list in order and the last match wins. Doc edits publish through
+    # corpus-sync.yml instead.
+    paths:
+      - mcp/**
+      - infra/**
+      - analysis/output/cycle_params.json
+      - .github/workflows/mcp-deploy.yml
+      - "!**/*.md"
+  # For applying a repo-variable change, retrying a failed run, previewing
+  # (plan) or decommissioning (destroy, gated). Apply takes the same route
+  # as a push.
   workflow_dispatch:
     inputs:
       action:
@@ -26,30 +76,30 @@ on:
         default: plan
         required: true
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
+# A burst of merges collapses to the newest pending run, and jobs from
+# different runs never interleave. A gated run waiting for approval holds
+# the group, so later deploys queue behind it.
+#
+# A dispatched `plan` gets its own group (mcp-deploy-plan): only one run
+# per group can be pending, so a plan sharing the deploy group could
+# cancel a push deploy queued behind a running one. A plan applies
+# nothing, so it can run beside a deploy: Terraform's state lock
+# serialises their state access (each waits up to -lock-timeout), and the
+# plan may show changes the running deploy is about to make. Apply and
+# destroy dispatches stay in the deploy group.
 concurrency:
-  group: mcp-deploy
+  group: mcp-deploy${{ github.event_name == 'workflow_dispatch' && inputs.action == 'plan' && '-plan' || '' }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    # Apply can include knowledge-base creation plus corpus ingestion.
-    timeout-minutes: 25
-    environment: aws
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main'
-    env:
-      TF_IN_AUTOMATION: "true"
-      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
-      TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
-      TF_VAR_supabase_anon_key: ${{ vars.SUPABASE_ANON_KEY }}
-      TF_VAR_budget_alert_email: ${{ vars.ALERT_EMAIL }}
-      # Optional; mirrors the website's Vercel setting. Unset, the server
-      # defaults to 60.
-      TF_VAR_staleness_minutes: ${{ vars.BBB_STALENESS_MINUTES }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -65,7 +115,195 @@ jobs:
           npm ci
           npm run check
 
-      - name: Configure AWS credentials (OIDC)
+      # Kept for 30 days: a gated run can wait that long for approval.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcp-dist
+          path: mcp/dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: aws
+    # Destroy is only ever planned and applied by deploy-gated.
+    if: github.ref == 'refs/heads/main' && !(github.event_name == 'workflow_dispatch' && inputs.action == 'destroy')
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      # routine | noop | gated | plan (a dispatched plan; nothing applied).
+      route: ${{ steps.apply.outputs.denied == 'true' && 'gated' || steps.route.outputs.route }}
+      # The classifier's lines (addresses, actions, attribute names; never
+      # values) for the mcp-deploy issue, which the Dependabot skill reads
+      # because the REST API does not serve job summaries.
+      plan_summary: ${{ steps.classify.outputs.summary }}
+      # plan | apply when the update role hit AccessDenied, else empty.
+      denied_at: ${{ steps.plan.outputs.denied == 'true' && 'plan' || (steps.apply.outputs.denied == 'true' && 'apply' || '') }}
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
+      TF_VAR_supabase_anon_key: ${{ vars.SUPABASE_ANON_KEY }}
+      # Optional; mirrors the website's Vercel setting. Unset, the server
+      # defaults to 60.
+      TF_VAR_staleness_minutes: ${{ vars.BBB_STALENESS_MINUTES }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mcp-dist
+          path: mcp/dist
+
+      - name: Configure AWS credentials (OIDC, update role)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_UPDATE_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ vars.AWS_REGION }}"
+
+      # The human-readable plan prints attribute values, so it goes to a
+      # file and only a failed plan's log (errors, no diff) is shown. An
+      # AccessDenied means the update role lacks something this plan needs
+      # (a refresh of a resource outside its reads, or a provider bump that
+      # calls a new API): that routes to deploy-gated rather than failing.
+      - name: Terraform plan
+        id: plan
+        working-directory: infra
+        run: |
+          set -uo pipefail
+          if terraform plan -input=false -lock-timeout=5m -no-color -out=tfplan > plan.log 2>&1; then
+            echo "denied=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cat plan.log
+          if grep -qE 'AccessDenied|not authorized to perform' plan.log; then
+            echo "::warning::Plan hit AccessDenied with the update role; routing to deploy-gated."
+            echo "denied=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit 1
+
+      # Never printed: the JSON holds prior state, sensitive values included.
+      - name: Classify plan
+        id: classify
+        if: steps.plan.outputs.denied == 'false'
+        working-directory: infra
+        env:
+          CLASSIFY_TITLE: Plan with the update role
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > plan.json
+          node scripts/classify-plan.mjs plan.json
+
+      - name: Decide route
+        id: route
+        env:
+          DENIED: ${{ steps.plan.outputs.denied }}
+          CLASSIFIED: ${{ steps.classify.outputs.route }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          if [ "$DENIED" = "true" ]; then
+            route=gated
+            echo "Plan hit AccessDenied with the update role: **gated**." >> "$GITHUB_STEP_SUMMARY"
+          else
+            route="$CLASSIFIED"
+          fi
+          case "$route" in
+            routine|noop|gated) ;;
+            *) echo "::error::Unexpected route '$route'"; exit 1 ;;
+          esac
+          if [ "$ACTION" = "plan" ]; then
+            echo "Dispatched plan: would route **$route**. Nothing applied; dispatch \`apply\` to deploy." >> "$GITHUB_STEP_SUMMARY"
+            route=plan
+          elif [ "$route" = "gated" ]; then
+            echo "Routing to deploy-gated: one approval in the \`aws-gated\` environment applies it." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "route=$route" >> "$GITHUB_OUTPUT"
+
+      # Applying a saved plan does not print the diff. An AccessDenied here
+      # (the update role meeting a write it lacks) hands over to
+      # deploy-gated, which re-plans from whatever was applied.
+      - name: Terraform apply (routine)
+        id: apply
+        if: steps.route.outputs.route == 'routine'
+        working-directory: infra
+        run: |
+          set -uo pipefail
+          if terraform apply -input=false -lock-timeout=5m -no-color tfplan 2>&1 | tee apply.log; then
+            echo "denied=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if grep -qE 'AccessDenied|not authorized to perform' apply.log; then
+            echo "::warning::Apply hit AccessDenied with the update role; routing to deploy-gated."
+            echo "Apply hit AccessDenied with the update role: **gated**." >> "$GITHUB_STEP_SUMMARY"
+            echo "denied=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit 1
+
+      # No corpus sync here, by design. A routine plan can only change the
+      # Lambda's code and resource tags, neither of which changes what the
+      # knowledge base should hold, and doc changes publish through
+      # corpus-sync.yml. deploy-gated syncs when its plan changes the
+      # knowledge base or the stores behind it.
+      - name: Smoke test
+        id: smoke
+        if: steps.route.outputs.route == 'noop' || (steps.route.outputs.route == 'routine' && steps.apply.outputs.denied == 'false')
+        run: infra/scripts/smoke.sh
+
+      - name: Remove plan files
+        if: always()
+        run: rm -f infra/tfplan infra/plan.json infra/plan.log infra/apply.log
+
+  deploy-gated:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    # Apply can include knowledge-base creation plus corpus ingestion.
+    timeout-minutes: 25
+    environment: aws-gated
+    # !cancelled() rather than the default success(), so a dispatched
+    # destroy still runs when deploy is skipped; build must still succeed.
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' && needs.build.result == 'success' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.action == 'destroy') ||
+      (needs.deploy.result == 'success' && needs.deploy.outputs.route == 'gated'))
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
+      TF_VAR_supabase_anon_key: ${{ vars.SUPABASE_ANON_KEY }}
+      # Optional; mirrors the website's Vercel setting. Unset, the server
+      # defaults to 60.
+      TF_VAR_staleness_minutes: ${{ vars.BBB_STALENESS_MINUTES }}
+      ACTION: ${{ inputs.action }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mcp-dist
+          path: mcp/dist
+
+      - name: Configure AWS credentials (OIDC, deploy role)
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -83,27 +321,53 @@ jobs:
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ vars.AWS_REGION }}"
 
-      - name: Terraform ${{ inputs.action }}
+      # A fresh plan with the deploy role: state may have moved since the
+      # deploy job planned (a partial routine apply, or another run).
+      - name: Terraform plan
         working-directory: infra
         run: |
-          case "${{ inputs.action }}" in
-            plan)    terraform plan -input=false ;;
-            apply)   terraform apply -input=false -auto-approve ;;
-            destroy) terraform destroy -input=false -auto-approve ;;
-          esac
+          set -uo pipefail
+          mode=()
+          if [ "$ACTION" = "destroy" ]; then mode=(-destroy); fi
+          if ! terraform plan "${mode[@]}" -input=false -lock-timeout=5m -no-color -out=tfplan > plan.log 2>&1; then
+            cat plan.log
+            exit 1
+          fi
+
+      - name: Classify plan
+        id: classify
+        working-directory: infra
+        env:
+          CLASSIFY_TITLE: Plan with the deploy role (gated)
+        run: |
+          set -euo pipefail
+          terraform show -json tfplan > plan.json
+          node scripts/classify-plan.mjs plan.json
+
+      - name: Terraform apply
+        working-directory: infra
+        run: terraform apply -input=false -lock-timeout=5m -no-color tfplan
 
       - name: Show outputs
-        if: inputs.action == 'apply'
+        if: env.ACTION != 'destroy'
         working-directory: infra
         run: terraform output
 
+      - name: Smoke test
+        id: smoke
+        if: env.ACTION != 'destroy'
+        run: infra/scripts/smoke.sh
+
       # Ingestion has no Terraform resource (see docs/mcp-rag-design.md).
       # Day-to-day doc merges publish through the ungated corpus-sync.yml
-      # workflow; this apply-time sync exists so a freshly created or
-      # changed stack is populated immediately, without waiting for the
-      # next doc merge. Both run the same shared script.
+      # workflow; this sync exists so a freshly created or changed
+      # knowledge base is populated at once, without waiting for the next
+      # doc merge. It runs only when the plan created or changed the
+      # knowledge base, its data source or the stores behind them, and not
+      # while the cost backstop has fired. Both workflows run the same
+      # shared script.
       - name: Sync docs corpus and ingest
-        if: inputs.action == 'apply'
+        if: env.ACTION != 'destroy' && steps.classify.outputs.corpus_sync == 'true' && steps.smoke.outputs.backstop != 'fired'
         working-directory: infra
         run: |
           set -euo pipefail
@@ -115,3 +379,115 @@ jobs:
           CORPUS_BUCKET=$(terraform output -raw corpus_bucket)
           export KB_ID DS_ID CORPUS_BUCKET
           ../mcp/scripts/sync-corpus.sh
+
+      - name: Remove plan files
+        if: always()
+        run: rm -f infra/tfplan infra/plan.json infra/plan.log
+
+  # Runs alongside deploy-gated while it waits for approval, so the
+  # maintainer hears about the waiting run (pushes through the Claude
+  # GitHub App email nobody).
+  notify-gated:
+    needs: deploy
+    if: needs.deploy.outputs.route == 'gated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      PLAN_SUMMARY: ${{ needs.deploy.outputs.plan_summary }}
+      DENIED_AT: ${{ needs.deploy.outputs.denied_at }}
+    steps:
+      - name: Open or comment on the mcp-deploy issue
+        run: |
+          set -euo pipefail
+          if [ "$DENIED_AT" = "plan" ]; then
+            why="the update role hit AccessDenied while planning, so there is no classified plan; the gated job prints one after approval"
+          elif [ "$DENIED_AT" = "apply" ]; then
+            why="the update role hit AccessDenied while applying the plan below"
+          else
+            why="its plan goes beyond a code or tag update"
+          fi
+          body=$(printf '%s\n' \
+            "A deploy of \`$SHA\` needs approval: $why, so it routed to the \`aws-gated\` environment." \
+            "" \
+            "Run: $RUN_URL" \
+            "" \
+            "Plan with the update role (addresses and actions only):" \
+            "" \
+            '```text' \
+            "${PLAN_SUMMARY:-(none)}" \
+            '```' \
+            "" \
+            "Review the deploy job's plan summary, then approve or reject the pending deployment. Until then it holds the \`mcp-deploy\` concurrency group, so later deploys queue behind it." \
+            "" \
+            "If it fails or is rejected, retry by dispatching this workflow on \`main\` with action \`apply\`. Never re-run an old run: it would deploy that run's commit over a newer deploy.")
+          gh label create mcp-deploy --color D93F0B --description "MCP deploy needs attention" 2>/dev/null || true
+          n=$(gh issue list --label mcp-deploy --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            # An assignee the API refuses (say, an organisation-owned repo)
+            # must not cost the notification: retry unassigned.
+            gh issue create --title "MCP deploy needs attention" --label mcp-deploy --assignee "$OWNER" --body "$body" ||
+              gh issue create --title "MCP deploy needs attention" --label mcp-deploy --body "$body"
+          fi
+
+  # Waits for notify-gated as well, so a rejected approval (deploy-gated
+  # fails at once) cannot race notify-gated into opening two issues, and a
+  # failed notification shows up as a failure here. notify-gated skipped
+  # (every route but gated) reads as `skipped`, which neither the failure
+  # nor the close condition below counts, and !cancelled() keeps report
+  # running when a needed job was skipped.
+  report:
+    needs: [build, deploy, deploy-gated, notify-gated]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      RESULTS: "build=${{ needs.build.result }}, deploy=${{ needs.deploy.result }} (route ${{ needs.deploy.outputs.route || 'none' }}), deploy-gated=${{ needs.deploy-gated.result }}, notify-gated=${{ needs.notify-gated.result }}"
+    steps:
+      - name: Open or comment on the mcp-deploy issue
+        if: contains(needs.*.result, 'failure')
+        run: |
+          set -euo pipefail
+          body=$(printf '%s\n' \
+            "A job in the MCP deploy of \`$SHA\` failed ($RESULTS). A rejected approval also shows as a failure; if notify-gated is the only failure, the deploy itself ran as the results show and only its approval notice was lost." \
+            "" \
+            "Run: $RUN_URL" \
+            "" \
+            "To retry once the cause is fixed (or if it was transient), dispatch this workflow on \`main\` with action \`apply\` (Actions, Deploy MCP stack, Run workflow). Never re-run this run: a re-run deploys this run's commit, which may be older than main, over a newer deploy.")
+          gh label create mcp-deploy --color D93F0B --description "MCP deploy needs attention" 2>/dev/null || true
+          n=$(gh issue list --label mcp-deploy --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            # An assignee the API refuses (say, an organisation-owned repo)
+            # must not cost the notification: retry unassigned.
+            gh issue create --title "MCP deploy needs attention" --label mcp-deploy --assignee "$OWNER" --body "$body" ||
+              gh issue create --title "MCP deploy needs attention" --label mcp-deploy --body "$body"
+          fi
+
+      - name: Close resolved mcp-deploy issues
+        if: >-
+          !contains(needs.*.result, 'failure') &&
+          (needs.deploy-gated.result == 'success' ||
+          (needs.deploy.result == 'success' &&
+          (needs.deploy.outputs.route == 'routine' || needs.deploy.outputs.route == 'noop')))
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --label mcp-deploy --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Resolved: \`$SHA\` deployed successfully in $RUN_URL ($RESULTS)."
+          done

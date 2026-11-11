@@ -1,0 +1,31 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_bedrockagent_data_source.docs",
+      "mode": "managed",
+      "type": "aws_bedrockagent_data_source",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "bbb-mcp-docs-corpus",
+          "data_deletion_policy": "DELETE"
+        },
+        "after": {
+          "name": "bbb-mcp-docs-corpus",
+          "data_deletion_policy": "RETAIN"
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

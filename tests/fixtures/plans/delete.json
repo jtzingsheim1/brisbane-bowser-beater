@@ -1,0 +1,29 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_api_gateway_api_key.demo",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "demo",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "name": "bbb-mcp-key-demo",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after": null,
+        "after_unknown": {}
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

@@ -1,0 +1,82 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_bedrockagent_knowledge_base.docs",
+      "mode": "managed",
+      "type": "aws_bedrockagent_knowledge_base",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "bbb-mcp-docs",
+          "tags": null
+        },
+        "after_unknown": {
+          "id": true,
+          "arn": true,
+          "tags_all": true
+        }
+      }
+    },
+    {
+      "address": "aws_api_gateway_api_key.second",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "second",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "bbb-mcp-key-second",
+          "enabled": true
+        },
+        "after_unknown": {
+          "id": true,
+          "value": true
+        }
+      }
+    },
+    {
+      "address": "aws_api_gateway_api_key.mcp",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "output_changes": {
+    "knowledge_base_id": {
+      "actions": [
+        "create"
+      ],
+      "before": null,
+      "after_unknown": true
+    }
+  },
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

@@ -46,7 +46,6 @@ Per-station ("where to fill up right now") was originally planned but has been *
 1. Per-station display materially expands our publisher-licence exposure (every station's price would need verbatim attribution + 30-min freshness against the per-station feed).
 2. The differentiated value of this project — the cycle awareness and the agent strategy — lives in Section 1. Per-station lookups are already well-served by PetrolSpy, 7-Eleven Fuel, etc.
 
-Captured in the backlog for post-MVP re-evaluation.
 
 ### Page-wide UI elements
 
@@ -206,7 +205,7 @@ Realistic target: under $20/month worst case, under $10 with caching.
 
 The project should be safe to launch, walk away from, and take down without monitoring. Three layers:
 
-**1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (default 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The threshold is env-tunable via `BBB_STALENESS_MINUTES` (positive integer, clamped to 24 h max) — right-sized for the actual product, which is a daily aggregate average where a few hours of intraday lag doesn't change what's displayed. Set to a higher value (e.g. 360–720) to ride out GitHub Actions scheduler lag; leave unset for the conservative default. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails. The MCP server's two licensed-data tools apply the same gate, reading `BBB_STALENESS_MINUTES` from Terraform (`var.staleness_minutes`, fed by the GitHub variable of the same name); keep that variable equal to the Vercel value.
+**1. Automatic self-policing on stale data.** Every render checks the freshness of the most recent ingestion. If the latest snapshot is older than a configured threshold (default 60 minutes — a 2× buffer above the LUL's 30-min clause), the app renders a static "Data temporarily unavailable" page instead of the chart/agent. The threshold is env-tunable via `BBB_STALENESS_MINUTES` (positive integer, clamped to 24 h max) — right-sized for the actual product, which is a daily aggregate average where a few hours of intraday lag doesn't change what's displayed. Set to a higher value (e.g. 360–720) to ride out GitHub Actions scheduler lag; leave unset for the conservative default. The site degrades gracefully rather than violating LUL clause 2.3 — no human intervention needed if the cron silently fails. The MCP server's two licensed-data tools apply the same gate, reading `BBB_STALENESS_MINUTES` from Terraform (`var.staleness_minutes`, fed by the GitHub variable of the same name); keep that variable equal to the Vercel value. Changing it is a Lambda configuration change, so it reaches AWS only through a gated `mcp-deploy` run (dispatch `apply` on main, then one approval).
 
 **2. Manual kill switch.** A single Vercel env var (`BBB_PUBLIC`). When unset, the whole app renders a static "currently paused" page — no licence-bound data anywhere. Flip it back to re-launch. Change it in the Vercel dashboard and redeploy (env var changes reach only new deployments): no code change, no race conditions.
 
@@ -216,7 +215,7 @@ The project should be safe to launch, walk away from, and take down without moni
 - Email QLD per LUL clause 1.5 to terminate the agreement
 - Stop using `price_snapshots` / `forecasts`: clause 4.6 bars any use of the Licensed Data or derived products after termination, and purging them is the simplest way to show it
 - Purge `usage_monthly_visitors` (disabling the cron also stops its 13-month prune)
-- Decommission the MCP stack (`mcp-deploy` in destroy mode; `infra/BOOTSTRAP.md` → "Decommissioning"): `BBB_PUBLIC` doesn't gate it, and its `get_forecast` / `get_recent_history` read the same tables
+- Decommission the MCP stack (`infra/BOOTSTRAP.md` → "Decommissioning", in its order): `BBB_PUBLIC` doesn't gate it, and its `get_forecast` / `get_recent_history` read the same tables. Detach the backstop deny in CloudShell (required if it has fired: IAM won't delete a role it is attached to), destroy via `mcp-deploy` in destroy mode (always the gated path, one approval), then delete **both** deploy roles (`bbb-mcp-update`, `bbb-mcp-deploy`) and disable the workflow. Deleting the roles is required, not tidying: otherwise a later merge to main starts a deploy that can rebuild the stack, and cl 4.6 bars using the data after termination. Delete the `bbb-backstop-*` resources last
 - Optionally take Vercel deployment down
 
 The first two take minutes; the rest can be done at leisure, except that the MCP stack should go before the licence terminates (cl 4.6).
@@ -240,7 +239,7 @@ The first two take minutes; the rest can be done at leisure, except that the MCP
 | Beautiful branding | Clean and functional only |
 | Tests beyond happy path + cost-control | Pragmatic coverage |
 | SEO / analytics / error monitoring | Out |
-| "Explain the cycle" 5th starter chip | Backlog — interesting but not MVP |
+| "Explain the cycle" 5th starter chip | Interesting but not MVP |
 | **Section 2: per-station price list with postcode search** | Cut — materially expands publisher-licence exposure (per-station attribution + 30-min freshness), and the cycle/agent in Section 1 carries the differentiated value. Per-station lookups already well-served by PetrolSpy etc. Backlog candidate for post-MVP. |
 
 ### Knowingly temporary (documented in README roadmap)
@@ -284,7 +283,7 @@ Australian defamation law is plaintiff-friendly. Retail fuel companies are well-
 - Implying any individual retailer is acting in bad faith
 - "Stand up to" / "fight back" / "beat" framing applied to retailers (the project name plays on "beat" in a benign sense — that's the limit; don't extend it into adversarial copy)
 
-**Agent system prompt** must explicitly encode these constraints (see PLAN.md Phase 4):
+**Agent system prompt** must explicitly encode these constraints:
 - The agent must describe the cycle in observational terms only
 - The agent must not characterise retailer behaviour as wrongdoing
 - The agent must not name specific retailers in negative framing
@@ -334,8 +333,8 @@ Recurring failure mode in this repo: a committed doc asserts present-tense state
 
 1. **Record events, not state.** "Applied 2026-08-23, deploy run 8" stays true forever; "is applied" rots.
 2. **State the rule, not the derived value.** "500 requests/month per key" survives a second key; "the ceiling is 1000" doesn't.
-3. **Status lives in one place — `PLAN.md`.** Other docs link to it rather than restating it.
-4. **Every PR carries its own `PLAN.md` update, written as post-merge truth.** The status text describes the world after the merge — never "this PR will…" or "pending merge". A PR that changes status without updating `PLAN.md` in the same diff is incomplete.
+3. **No status in docs.** Docs hold rules, design and how-to. What happened lives in git history and PRs; what is still to be done lives in GitHub issues, opened only for work that is actually going to be done (no backlog of parked issues). `PLAN.md`, the original build plan, was retired on 2026-11-11 for this reason; its history is in git.
+4. **A merged PR leaves no doc to chase.** Work that finishes with manual steps after merge points to the runbook for them and is not recorded as done afterwards. Never write "this PR will…" or "pending merge" into a doc.
 5. **Name a version only where it matters.** State a library major, model or runtime version only where it changes how code is written or what the system costs (this file's tech stack, the Haiku model behind `ask_docs`). Elsewhere name the library without its major. Every version a doc does state is checked against the file that pins it by `tests/doc-versions.test.ts`; extend its patterns when a doc names a new one.
 6. **Check a licence clause number against the licence text before citing it** ([Fuel Price Data Licence Terms and Conditions](https://fuelpricesqld.com.au/documents/LimitedUseLicence.pdf)). Clause 2.3 carries two obligations, no further publication and 30-minute / 24-hour currency, so say which one you mean.
 
@@ -354,36 +353,53 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
   public docs (`mcp/corpus-manifest.txt`) via a Bedrock knowledge base.
   The subproject's only paid call is `ask_docs` generation (Claude Haiku 4.5
   via Bedrock), bounded by layered AWS-enforced cost guards (500/month
-  gateway quota per key, per-request caps, a budget action that denies
-  Bedrock at 100% of a small monthly budget) -- see `docs/mcp-rag-design.md`.
+  gateway quota per key, per-request caps, Bedrock on-demand rate quotas
+  on the two models the workload boundary allows, and a human-owned budget
+  backstop that at 100% of a small monthly budget denies Bedrock, log
+  writes and S3 writes to every role that can spend) -- see `mcp/README.md`
+  and `infra/BOOTSTRAP.md` section 3d.
 - `infra/` -- single Terraform root module (Lambda + REST API Gateway with
   API key + usage plan; Bedrock knowledge base + S3 Vectors index + corpus
-  bucket + budget action for the RAG stack). `terraform destroy` = full
-  decommission.
-- Code/infra deploys ONLY via `.github/workflows/mcp-deploy.yml` (GitHub
-  OIDC into the `aws` environment, human-approval gated). Docs corpus
-  publishing is the one ungated exception: `.github/workflows/corpus-sync.yml`
-  re-syncs the knowledge base on any push to main touching a corpus doc,
-  under a separate hand-created role (`bbb-mcp-corpus-sync`) narrow enough
-  that an unattended run can only republish docs -- the split exists so doc
-  PRs stop needing a manual deploy, and `tests/corpus-sync-workflow.test.ts`
-  + `tests/infra-boundaries.test.ts` hold both workflow and role to that
-  shape. No long-lived AWS credentials exist anywhere -- sessions must never
-  hold AWS keys. One-time account setup: `infra/BOOTSTRAP.md`.
+  bucket for the RAG stack). `terraform destroy` removes the stack, not
+  the whole footprint: the GitHub Actions roles, boundaries and cost
+  backstop are hand-made outside it, and the full exit is BOOTSTRAP's
+  "Decommissioning" (see Permanent exit path above).
+- Code/infra deploys ONLY via `.github/workflows/mcp-deploy.yml`, which
+  runs on every push to main touching an MCP deploy path (2026-11, design
+  in `docs/mcp-auto-deploy-design.md`). A plan that only replaces the
+  Lambda's code or retags resources applies unattended, under the
+  `bbb-mcp-update` role (GitHub environment `aws`, no reviewer), which
+  holds no IAM write, no `PassRole`, no Lambda configuration and no API
+  Gateway write. Everything else (IAM, API Gateway, Lambda configuration,
+  new, replaced or deleted resources, destroy, or any AccessDenied on the
+  unattended path) waits for one human approval under `bbb-mcp-deploy`
+  (environment `aws-gated`). A failed or waiting run opens the
+  `mcp-deploy` issue; retry by dispatching `apply` on main, never by
+  re-running an old run. Docs corpus publishing runs unattended too, as
+  its own workflow: `.github/workflows/corpus-sync.yml` re-syncs the
+  knowledge base on any push to main touching a corpus doc, under a
+  separate hand-created role (`bbb-mcp-corpus-sync`) narrow enough that
+  it can only republish docs, and `tests/corpus-sync-workflow.test.ts` +
+  `tests/infra-boundaries.test.ts` hold the workflows and roles to their
+  shapes. No long-lived AWS credentials exist anywhere -- sessions must
+  never hold AWS keys. One-time account setup: `infra/BOOTSTRAP.md`.
 - Security posture documented in `mcp/README.md`. The language discipline
   (Legal hygiene above) applies to every string the server ships and is
   enforced by a test.
-- The deploy role's policy grants wildcard actions, mostly on
+- The gated deploy role's policy grants wildcard actions, mostly on
   name-prefix-scoped resources (`lambda:*`, `s3:*` on the corpus bucket,
-  `s3vectors:*`, `budgets:*`). `apigateway:*` is the exception: API Gateway
-  ARNs carry ids rather than names, so it cannot be prefix-scoped and is
-  scoped to the region instead. All of it is acceptable here only because
-  every session of that role requires a human-approved workflow run from
-  main, and because the account holds nothing else. Do not carry the
-  pattern into anything whose deploys are not approval-gated.
-- The two permissions boundaries that cap every role the stack creates live
-  in `infra/BOOTSTRAP.md` (written by a human in CloudShell, deliberately
-  not by Terraform, so the deploy cannot widen its own ceiling).
+  `s3vectors:*`). `apigateway:*` is the exception: API Gateway ARNs carry
+  ids rather than names, so it cannot be prefix-scoped and is scoped to
+  the region instead. All of it is acceptable here only because every
+  session of that role requires a human-approved workflow run from main
+  (the `aws-gated` reviewer), and because the account holds nothing else.
+  The unattended update role carries wildcard reads only; its writes are
+  named actions on named resources. Do not carry the wildcard pattern
+  into anything whose deploys are not approval-gated.
+- The two permissions boundaries that cap every role the stack creates
+  (and the backstop's own action role) live in `infra/BOOTSTRAP.md`
+  (written by a human in CloudShell, deliberately not by Terraform, so the
+  deploy cannot widen its own ceiling).
   `tests/infra-boundaries.test.ts` holds those documents and the inline
   role policies in `infra/*.tf` to exact action parity in both directions,
   pins each role's grants individually, and checks the deploy policy's
@@ -396,7 +412,6 @@ over MCP (streamable HTTP). Framed everywhere as a natural extension of BBB.
 
 ## Where to look next
 
-- **`PLAN.md`** — phase plan and current status
 - **`AGENTS.md`** — tool-rules file generated by `create-next-app`. Includes an important reminder: **Next.js 16 has breaking changes that may not match older training data**. Consult `node_modules/next/dist/docs/` or use context7 to look up current Next.js / React 19 / Tailwind v4 APIs rather than relying on memory.
 - **`/analysis/`** — Python scripts for cycle characterisation (Phase 2; outputs `output/cycle_params.json`). See `analysis/requirements.txt`; run in its own venv.
 - **`README.md`** — public-facing documentation (created in Phase 7)
