@@ -1,11 +1,11 @@
 # MCP auto-deploy: design and build plan
 
-DRAFT v3, 2026-11-11. Two review rounds so far, each with independent
+DRAFT v4, 2026-11-11. Three review rounds, each with fresh independent
 reviewers. v1 (one narrowed deploy role) failed round 1. v2 (two roles)
 held its shape in round 2, but the reviewers broke its worst-case bound
-and several build details. v3 narrows the unattended role further, to
-"replace the Lambda's code", which removes most of those problems instead
-of patching them. Before merge this document is rewritten as post-merge
+and several build details. v3 narrowed the unattended role to "replace
+the Lambda's code"; round 3 judged it buildable with policy-text fixes,
+which v4 applies. Before merge this document is rewritten as post-merge
 truth (see the last section).
 
 ## 1. Problem
@@ -68,7 +68,8 @@ main controls what a push-triggered deploy runs:
 - the maintainer;
 - Claude sessions through the Claude GitHub App, which can merge PRs. Per
   Anthropic's documented permissions the app has Actions read only, so it
-  can't dispatch or re-run workflows (to confirm in the build);
+  can't dispatch or re-run workflows. The build confirms this first,
+  before anything relies on it;
 - a leaked write token, or an admin token, which can push to main;
 - dependency code: npm packages decide what the bundle contains, and
   Terraform providers and pinned actions run in jobs that can mint a
@@ -99,8 +100,8 @@ Consequences for the design:
 | :- | :- | :- |
 | Trusted by | `environment:aws` (no reviewer, main only) | `environment:aws-gated` (new: required reviewer, admin bypass off, main only) |
 | Runs | Code-only deploys, unattended | Everything else, after one approval |
-| Writes | `lambda:UpdateFunctionCode` on exactly `function:bbb-mcp-server`; tag and untag on stack resources; corpus object put/delete; start ingestion; Terraform state | Today's statements, minus everything budget-related |
-| Reads | `Get*`, `List*`, `Describe*` on stack resources, `apigateway:GET`, IAM reads on the stack roles | Today's |
+| Writes | `lambda:UpdateFunctionCode` on exactly `function:bbb-mcp-server`; tag and untag on the Lambda, corpus bucket, vector store and knowledge base (never IAM or API Gateway tags); corpus object put/delete; start ingestion; Terraform state | Today's statements, minus everything budget-related |
+| Reads | `Get*`, `List*`, `Describe*` on stack resources (`logs:DescribeLogGroups` on `log-group:*`, which it requires; `s3:ListBucket` on the corpus bucket), `apigateway:GET`, IAM reads on the stack roles, budget and action reads on `bbb-backstop-*` | Today's, plus budget and action reads on `bbb-backstop-*` |
 | Policy | Inline, on a role outside every deploy-policy pattern | Inline, today's |
 
 Why reads are wildcards and writes are not: Terraform's refresh calls many
@@ -138,21 +139,34 @@ What lands where:
 
 ### 5.2 Cost backstop and model scope
 
-- **Human-owned backstop.** The budget, its action, the Bedrock deny
-  policy and the action's role move out of Terraform into a new
-  `infra/BOOTSTRAP.md` section 3d. They are named `bbb-backstop-*`, outside
-  every deploy-policy pattern, with explicit Denies on both deploy roles
-  and a test that no deploy statement's resource matches them.
-- **Both Bedrock callers covered.** The action targets both
-  `bbb-mcp-server-exec` and `bbb-mcp-kb-role`. Today it names only the
-  server role. `bbb-mcp-boundary-iam` widens to the kb role so the action
-  can attach there.
-- **Two models only.** The workload boundary's `InvokeModel` narrows from
-  `*` to the Titan embedding model, the `au.` Haiku inference profile, and
-  the Haiku foundation-model ARNs in both destination regions
-  (`rag_model_region_arns` in `infra/rag.tf`). `Retrieve` and
-  `RetrieveAndGenerate` move to their own statement, staying on `*` as
-  Bedrock requires. A test pins the exact ARNs.
+- **Human-owned backstop.** The budget, its action, the deny policy and
+  the action's role move out of Terraform into a new `infra/BOOTSTRAP.md`
+  section 3d. They are named `bbb-backstop-*`, outside every
+  deploy-policy pattern. Both deploy roles get explicit Denies on every
+  write to them, plus a Deny on `iam:DetachRolePolicy` conditioned on
+  `iam:PolicyARN` matching `bbb-backstop-*` (a detach names the role, not
+  the policy, so a resource-keyed Deny alone would not stop it). Reads
+  stay allowed, for the smoke test. A test asserts no deploy statement's
+  resource matches the backstop names.
+- **Every role that can spend is covered.** The deny policy covers
+  `bedrock:*`, `logs:PutLogEvents` and `s3:PutObject`. The action attaches
+  it to the server role, the kb role, the update role and the corpus-sync
+  role. Today it covers only Bedrock on the server role.
+  `bbb-mcp-boundary-iam` stays the backstop role's boundary and widens to
+  those roles. The parity test learns to model a role created in
+  BOOTSTRAP rather than in `infra/*.tf`.
+- **Two models only.** The workload boundary narrows `InvokeModel`,
+  `InvokeModelWithResponseStream` and `GetInferenceProfile` from `*` to:
+  - the Titan embedding model;
+  - the `au.` Haiku inference profile;
+  - the Haiku foundation-model ARNs in both destination regions
+    (`rag_model_region_arns` in `infra/rag.tf`).
+
+  `Retrieve` and `RetrieveAndGenerate` move to their own statement,
+  staying on `*` as Bedrock requires. A test pins the exact ARNs. Getting
+  this wrong breaks the live `ask_docs` the moment the boundary is
+  pasted, so the build checks it against the server role's own policy
+  first.
 - **Rate cap (new, maintainer, console).** Lower this account's Bedrock
   on-demand quotas for those two models through Service Quotas, to a
   level comfortably above `ask_docs`' real use. This is the control that
@@ -182,7 +196,11 @@ Jobs:
    2. A classifier (plain Node, no dependencies, unit-tested) reads the
       plan JSON and prints addresses and actions only. Routine means
       in-place updates whose changed attributes are all on a per-type
-      allow-list: code attributes of the Lambda, `tags_all` anywhere.
+      allow-list: the Lambda's `source_code_hash` and the computed
+      attributes that follow it (`last_modified`, `code_sha256`,
+      `source_code_size`), and `tags_all` on the resource types the
+      update role may tag. The test fixtures are real plans made with the
+      locked provider, not hand-written JSON.
    3. Routine: apply the saved plan, then the smoke test. Anything else,
       or an AccessDenied during plan or apply, sets `route=gated` and
       writes the summary to the job summary.
@@ -199,15 +217,15 @@ Triggers:
   `analysis/output/cycle_params.json` and `.github/workflows/mcp-deploy.yml`,
   excluding `**/*.md` (doc edits go through `corpus-sync.yml`).
 - `workflow_dispatch` (`plan`, `apply`, `destroy`), for applying a
-  repo-variable change or retrying a failed run. Plan and apply take the
-  same route as a push.
+  repo-variable change or retrying a failed run. Apply takes the same
+  route as a push. A dispatched `plan` never queues a gated apply.
 
 `-lock-timeout=5m` on every Terraform command. `force-unlock` is in the
-runbook for a run killed mid-apply. The state bucket is already
-versioned.
+runbook for a run killed mid-apply. The update role can write Terraform
+state; the state bucket is already versioned, which is the recovery path.
 
-The `forget` action is routine only for the backstop's exact addresses,
-so a stray `removed` block can't silently drop a resource.
+`forget` is never routine. The backstop handover forgets through the
+gated path (section 9).
 
 ### 5.4 Smoke test (accident guard)
 
@@ -233,8 +251,10 @@ exercise the handler with real MCP requests.
   `issues: write`; `build` doesn't.
 - A gated run waiting for approval blocks later deploys in the
   concurrency group. The issue says so, and so does the weekly report.
-- A failed run needs a person to re-run it, because the Claude app can't.
-  The issue gives the one-click link.
+- A failed run needs a person to start a new one, because the Claude app
+  can't. The issue links to a dispatch of `apply` on main, never to
+  "re-run" of the old run, which would deploy older code over a newer
+  successful deploy.
 
 ### 5.6 Reporting (Dependabot skill)
 
@@ -272,17 +292,36 @@ Attacker code on main, deployed unattended, can:
 - poison the docs corpus and trigger ingestion (Titan embeddings and
   storage, the same exposure the corpus-sync role already has);
 - read the API keys and spend their monthly quotas;
-- take the server role's credentials and call the two allowed models
-  until the backstop fires.
+- take the server role's credentials and call the two allowed models,
+  or write logs, until the backstop fires;
+- use the update role from any workflow on main that declares the `aws`
+  environment, at any time, not only at deploy (a test pins which
+  workflows declare it, but tests are attacker-controlled here). That
+  includes corpus writes and ingestion.
 
-The last item is the cost bound: (the Service Quotas rate cap) × (Budgets'
-reporting lag, up to about a day, plus the time to notice). With the rate
-cap set to a small multiple of `ask_docs`' real use, that is a small,
-known number, which the build computes and records. Lambda compute is
-bounded by the gateway quota times the unchanged 25-second timeout.
+The cost bound, per service, until the backstop fires (Budgets' reporting
+lag, up to about a day, plus the time to notice):
+
+- Bedrock: the Service Quotas rate cap on the two models.
+- CloudWatch Logs ingestion and S3 requests: uncapped by quota, but cut
+  off by the backstop's deny on every role that can spend. The build
+  estimates the per-day exposure and records it.
+- Lambda compute: the gateway quota times the unchanged 25-second
+  timeout and 256 MB.
+- Lambda egress: bounded by the same compute, small at this size.
+
+The build computes the total and records it. It is a small, known
+number, not an open-ended one.
 
 It cannot create or reshape roles, change Lambda configuration, open an
 endpoint, change API Gateway, call other models, or touch the backstop.
+Bumps to the pinned actions in `mcp-deploy.yml` deploy unattended like
+any other change on main.
+
+An approved gated run can do more. It holds the deploy role, which can
+create a new server role and point the Lambda at it, so it can step
+around even a fired backstop. That is the deploy role's power today, and
+it is why its runs stay behind an approval.
 
 The same credential bound applies to every deploy today, gated or not,
 because approvals are given without reading code. This design doesn't
@@ -427,10 +466,14 @@ forget, then narrow:
    backstop, so it routes to `deploy-gated`, a second approval, which
    forgets the old backstop. Two taps, once.
 5. **Maintainer, CloudShell:**
-   - delete the old backstop resources;
+   - delete the old backstop resources, in order:
+     1. detach the old `bbb-mcp-bedrock-deny` if it was ever applied;
+     2. delete the budget action, then the budget;
+     3. delete the old budgets role's inline policy, then the role;
+     4. delete the old deny policy;
    - replace the deploy role's policy with the narrowed one plus the
      Denies;
-   - remove the `aws` subject from its trust.
+   - rewrite its trust to the `aws-gated` subject only.
 6. **Maintainer, GitHub:** remove the reviewer from `aws`.
 7. **Verify** with a dispatched `apply` (a no-op, which should run
    unattended to "nothing to change"), and record the dated events in
@@ -448,7 +491,7 @@ already exist.
 | Normal Wednesday (bumps, code) | None. The report says "MCP deployed at <sha>" |
 | A gated change (IAM, config, new resource) | One tap on the notification |
 | A provider bump needs a write the update role lacks | One tap (it routes to gated). Widening the update role is optional |
-| A failed deploy | Read the issue email; one click to re-run, or a fix PR |
+| A failed deploy | Read the issue email; one click to dispatch `apply` on main, or a fix PR |
 
 ## 11. Decisions for the maintainer
 
