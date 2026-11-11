@@ -2,8 +2,9 @@
 # Syncs the curated docs corpus to the corpus bucket and runs a Bedrock
 # ingestion job to completion. Shared by both workflows that publish the
 # corpus (.github/workflows/corpus-sync.yml on doc merges, and the gated
-# .github/workflows/mcp-deploy.yml after each apply), so the staging
-# validation and ingestion handling cannot drift between them.
+# job of .github/workflows/mcp-deploy.yml after an apply that created or
+# changed the knowledge base), so the staging validation and ingestion
+# handling cannot drift between them.
 #
 # Required environment: KB_ID, DS_ID, CORPUS_BUCKET.
 # Works from any CWD; paths resolve relative to the repo root.

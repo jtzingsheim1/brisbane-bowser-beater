@@ -17,7 +17,8 @@
 //            incomplete plan. The deploy-gated job applies it after one
 //            human approval.
 //
-// Also reports corpus_sync=true when the plan creates or changes the
+// Writes route, corpus_sync and a multiline summary (the printed lines) to
+// $GITHUB_OUTPUT when set. Also reports corpus_sync=true when the plan creates or changes the
 // knowledge base, its data source, or the stores behind them (beyond
 // tags), so the workflow re-ingests the docs corpus only then.
 //
@@ -31,6 +32,7 @@
 // without an install step. Pure functions are exported for
 // tests/classify-plan.test.ts.
 
+import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -235,6 +237,22 @@ export function formatSummary(result, title = "Terraform plan classification") {
   return `### ${title}\n\nRoute: **${result.route}**\n\n\`\`\`text\n${body}\n\`\`\`\n`;
 }
 
+/**
+ * $GITHUB_OUTPUT content: route, corpus_sync, and `summary` (the same
+ * lines as stdout, multiline, so the workflow can put them in the
+ * mcp-deploy issue; the REST API does not serve job summaries).
+ */
+export function formatOutputs(result, delimiter = `CLASSIFY_${randomUUID()}`) {
+  const lines = formatLines(result);
+  if (lines.some((l) => l.includes(delimiter))) {
+    throw new Error("output delimiter collides with the summary");
+  }
+  return (
+    `route=${result.route}\ncorpus_sync=${result.corpusSync}\n` +
+    `summary<<${delimiter}\n${lines.join("\n")}\n${delimiter}\n`
+  );
+}
+
 function main(argv) {
   const path = argv[2];
   if (!path) {
@@ -244,10 +262,7 @@ function main(argv) {
   const result = classifyPlan(JSON.parse(readFileSync(path, "utf8")));
   for (const line of formatLines(result)) console.log(line);
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(
-      process.env.GITHUB_OUTPUT,
-      `route=${result.route}\ncorpus_sync=${result.corpusSync}\n`,
-    );
+    appendFileSync(process.env.GITHUB_OUTPUT, formatOutputs(result));
   }
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(

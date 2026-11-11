@@ -172,9 +172,15 @@ describe("output never carries a value from the plan", () => {
       const expected = classify(name);
       expect(stdout).not.toContain(SENTINEL);
       expect(readFileSync(summary, "utf8")).not.toContain(SENTINEL);
-      expect(readFileSync(out, "utf8")).toBe(
-        `route=${expected.route}\ncorpus_sync=${expected.corpusSync}\n`,
+      const outputs = readFileSync(out, "utf8");
+      expect(outputs).not.toContain(SENTINEL);
+      expect(outputs).toMatch(
+        new RegExp(
+          `^route=${expected.route}\\ncorpus_sync=${expected.corpusSync}\\n` +
+            `summary<<(CLASSIFY_[0-9a-f-]+)\\n[^]*\\n\\1\\n$`,
+        ),
       );
+      expect(outputs).toContain(formatLines(expected).join("\n"));
     },
   );
 });
