@@ -179,7 +179,7 @@ async function latestDayForSource(
 // carry-forward (most stations still on their pre-live value), so we treat the
 // day as no-data. NOTE: this is the ramp-up heuristic (option A). The deeper fix
 // (option B — staleness-cap carry-forward per station, so dormant/closed
-// stations age out) is tracked in PLAN.md and would supersede this.
+// stations age out) would supersede this.
 const LIVE_COVERAGE_THRESHOLD = 0.8;
 
 // The last day before live coverage crosses LIVE_COVERAGE_THRESHOLD — i.e. the
