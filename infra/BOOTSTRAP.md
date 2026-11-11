@@ -1133,18 +1133,16 @@ else
   put_managed_policy bbb-backstop-deny /tmp/backstop-deny.json \
     "Attached by the BBB MCP cost backstop to stop spending"
 
-  BACKSTOP_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/bbb-backstop-action"
-  IAM_BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
   if aws iam get-role --role-name bbb-backstop-action >/dev/null 2>&1; then
     echo "Backstop role already exists; refreshing trust, boundary + policy"
     aws iam update-assume-role-policy --role-name bbb-backstop-action \
       --policy-document file:///tmp/backstop-action-trust.json
     aws iam put-role-permissions-boundary --role-name bbb-backstop-action \
-      --permissions-boundary "${IAM_BOUNDARY_ARN}"
+      --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam"
   else
     aws iam create-role --role-name bbb-backstop-action \
       --assume-role-policy-document file:///tmp/backstop-action-trust.json \
-      --permissions-boundary "${IAM_BOUNDARY_ARN}" \
+      --permissions-boundary "arn:aws:iam::${ACCOUNT_ID}:policy/bbb-mcp-boundary-iam" \
       --description "Execution role for the BBB MCP cost-backstop budget action" \
       --tags Key=project,Value=bbb-mcp >/dev/null
     echo "Backstop role created"
@@ -1183,7 +1181,7 @@ else
       --action-type APPLY_IAM_POLICY \
       --action-threshold ActionThresholdValue=100,ActionThresholdType=PERCENTAGE \
       --definition file:///tmp/backstop-action-definition.json \
-      --execution-role-arn "${BACKSTOP_ROLE_ARN}" \
+      --execution-role-arn "arn:aws:iam::${ACCOUNT_ID}:role/bbb-backstop-action" \
       --approval-model AUTOMATIC \
       --subscribers "SubscriptionType=EMAIL,Address=${ALERT_EMAIL}" \
       --region us-east-1 >/dev/null
@@ -1572,7 +1570,7 @@ issue #101 item).
    this run it creates the corpus-sync role and refreshes the workload
    boundary; nothing else changes.
 2. **Add the four repository variables** the script prints at the end
-   (listed in Step 4.2): `AWS_CORPUS_SYNC_ROLE_ARN`, `MCP_KB_ID`,
+   (listed in Step 4.4): `AWS_CORPUS_SYNC_ROLE_ARN`, `MCP_KB_ID`,
    `MCP_DATA_SOURCE_ID`, `MCP_CORPUS_BUCKET`.
 
 No environment gate for this workflow, on purpose: the merge that landed a
