@@ -18,8 +18,8 @@ output "demo_api_key_name" {
   value       = aws_api_gateway_api_key.demo.name
 }
 
-# Consumed by the corpus sync (both the deploy workflow's post-apply run
-# and the ungated docs publisher, which reads them from repo variables).
+# Consumed by the corpus sync: the deploy workflow's post-apply run, and
+# corpus-sync.yml, which reads them from repo variables (BOOTSTRAP Step 4).
 # None of these are secrets.
 output "knowledge_base_id" {
   description = "Bedrock knowledge base id for the docs corpus."

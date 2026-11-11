@@ -1,0 +1,30 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_iam_role.server",
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "bbb-mcp-server-exec"
+        },
+        "after": {
+          "name": "bbb-mcp-server-exec"
+        },
+        "after_unknown": {}
+      },
+      "previous_address": "aws_iam_role.server_exec"
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

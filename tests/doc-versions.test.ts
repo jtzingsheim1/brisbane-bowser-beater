@@ -14,11 +14,10 @@ const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 // Every committed Markdown file, so a new doc is covered without editing this
-// list. Historical event records in PLAN.md (e.g. "Phase 4 shipped on AI SDK
-// v6") are true as written, so PLAN.md is deliberately not scanned.
+// list.
 const DOCS = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
   .split("\n")
-  .filter((p) => p && p !== "PLAN.md");
+  .filter(Boolean);
 
 // The MCP subproject pins its own dependencies, and its docs describe the
 // Lambda runtime, so library majors are checked against the root package.json

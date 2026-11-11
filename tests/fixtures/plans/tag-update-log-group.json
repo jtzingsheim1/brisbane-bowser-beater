@@ -1,0 +1,41 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_cloudwatch_log_group.server",
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          }
+        },
+        "after": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp",
+            "repository": "example/renamed"
+          }
+        },
+        "after_unknown": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

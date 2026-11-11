@@ -87,31 +87,10 @@ variable "throttle_burst_limit" {
 
 variable "monthly_quota" {
   # API Gateway enforces usage-plan quotas on a best-effort basis (small
-  # overshoot under burst is possible); the budget action in rag.tf is the
-  # firm backstop behind it.
+  # overshoot under burst is possible). Behind it sits the human-owned
+  # budget action (infra/BOOTSTRAP.md section 3d), which acts on billing
+  # data that lags by hours, so it bounds a month rather than an hour.
   description = "Cap on requests per API key per calendar month."
   type        = number
   default     = 500
-}
-
-# Cost backstop (see infra/rag.tf): account-wide monthly budget in USD.
-# At 100% of actual spend the budget action attaches a Deny bedrock:*
-# policy to the server role, ending paid generation.
-variable "budget_limit_usd" {
-  description = "Monthly account-wide budget (USD) for the deny-Bedrock action."
-  type        = string
-  default     = "5.0"
-}
-
-variable "budget_alert_email" {
-  description = "Email notified when the budget action triggers."
-  type        = string
-  # Not a credential, but a personal address: sensitive keeps it out of
-  # plan/apply output in the public repo's workflow logs.
-  sensitive = true
-
-  validation {
-    condition     = can(regex("^[^@\\s]+@[^@\\s]+$", var.budget_alert_email))
-    error_message = "budget_alert_email must be an email address."
-  }
 }

@@ -1,0 +1,85 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "data.archive_file.server",
+      "mode": "data",
+      "type": "archive_file",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/archive",
+      "change": {
+        "actions": ["read"],
+        "before": null,
+        "after": {"output_path": "./.terraform/bbb-mcp-server.zip"},
+        "after_unknown": {"output_base64sha256": true, "output_sha": true}
+      }
+    },
+    {
+      "address": "aws_lambda_function.server",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "function_name": "bbb-mcp-server",
+          "source_code_hash": "OLDHASHb64AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+          "code_sha256": "OLDHASHb64AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+          "source_code_size": 812345,
+          "last_modified": "2026-11-01T00:00:00.000+0000",
+          "qualified_arn": "arn:aws:lambda:ap-southeast-2:111111111111:function:bbb-mcp-server:$LATEST",
+          "qualified_invoke_arn": "arn:aws:apigateway:ap-southeast-2:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-2:111111111111:function:bbb-mcp-server:$LATEST/invocations",
+          "version": "$LATEST",
+          "memory_size": 256,
+          "timeout": 25,
+          "environment": [{"variables": {"SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print", "SUPABASE_URL": "https://example.supabase.co"}}],
+          "tags": {},
+          "tags_all": {"managed_by": "terraform", "project": "bbb-mcp"}
+        },
+        "after": {
+          "function_name": "bbb-mcp-server",
+          "source_code_hash": "NEWHASHb64BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+          "memory_size": 256,
+          "timeout": 25,
+          "environment": [{"variables": {"SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print", "SUPABASE_URL": "https://example.supabase.co"}}],
+          "tags": {},
+          "tags_all": {"managed_by": "terraform", "project": "bbb-mcp"}
+        },
+        "after_unknown": {
+          "code_sha256": true,
+          "last_modified": true,
+          "qualified_arn": true,
+          "qualified_invoke_arn": true,
+          "source_code_size": true,
+          "version": true,
+          "environment": [{"variables": {}}],
+          "tags": {},
+          "tags_all": {}
+        },
+        "before_sensitive": {"environment": [{"variables": {"SUPABASE_ANON_KEY": true}}]},
+        "after_sensitive": {"environment": [{"variables": {"SUPABASE_ANON_KEY": true}}]}
+      }
+    },
+    {
+      "address": "aws_api_gateway_api_key.mcp",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["no-op"],
+        "before": {"name": "bbb-mcp-key", "value": "SENTINEL-SECRET-0d1e-do-not-print"},
+        "after": {"name": "bbb-mcp-key", "value": "SENTINEL-SECRET-0d1e-do-not-print"},
+        "after_unknown": {}
+      }
+    }
+  ],
+  "output_changes": {
+    "mcp_endpoint": {"actions": ["no-op"], "before": "https://example.invalid/prod/mcp", "after": "https://example.invalid/prod/mcp", "after_unknown": false}
+  },
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

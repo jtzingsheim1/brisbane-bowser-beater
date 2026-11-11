@@ -1,0 +1,60 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_api_gateway_deployment.mcp",
+      "mode": "managed",
+      "type": "aws_api_gateway_deployment",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create",
+          "delete"
+        ],
+        "before": {
+          "id": "abc123",
+          "triggers": {
+            "redeployment": "0000"
+          }
+        },
+        "after": {
+          "triggers": {
+            "redeployment": "1111"
+          }
+        },
+        "after_unknown": {
+          "id": true
+        }
+      },
+      "action_reason": "replace_by_triggers"
+    },
+    {
+      "address": "aws_api_gateway_stage.prod",
+      "mode": "managed",
+      "type": "aws_api_gateway_stage",
+      "name": "prod",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "stage_name": "prod",
+          "deployment_id": "abc123"
+        },
+        "after": {
+          "stage_name": "prod"
+        },
+        "after_unknown": {
+          "deployment_id": true
+        }
+      }
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

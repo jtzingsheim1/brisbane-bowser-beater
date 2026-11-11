@@ -1,0 +1,202 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.8",
+  "resource_changes": [
+    {
+      "address": "aws_lambda_function.server",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "server",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          },
+          "environment": [
+            {
+              "variables": {
+                "SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print"
+              }
+            }
+          ]
+        },
+        "after": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp",
+            "repository": "example/renamed"
+          },
+          "environment": [
+            {
+              "variables": {
+                "SUPABASE_ANON_KEY": "SENTINEL-SECRET-0d1e-do-not-print"
+              }
+            }
+          ]
+        },
+        "after_unknown": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.corpus",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "corpus",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          },
+          "bucket": "bbb-mcp-corpus-111111111111"
+        },
+        "after": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp",
+            "repository": "example/renamed"
+          },
+          "bucket": "bbb-mcp-corpus-111111111111"
+        },
+        "after_unknown": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_s3vectors_vector_bucket.docs",
+      "mode": "managed",
+      "type": "aws_s3vectors_vector_bucket",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          }
+        },
+        "after": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp",
+            "repository": "example/renamed"
+          }
+        },
+        "after_unknown": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_s3vectors_index.docs",
+      "mode": "managed",
+      "type": "aws_s3vectors_index",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          }
+        },
+        "after": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp",
+            "repository": "example/renamed"
+          }
+        },
+        "after_unknown": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_bedrockagent_knowledge_base.docs",
+      "mode": "managed",
+      "type": "aws_bedrockagent_knowledge_base",
+      "name": "docs",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp"
+          }
+        },
+        "after": {
+          "tags": {},
+          "tags_all": {
+            "managed_by": "terraform",
+            "project": "bbb-mcp",
+            "repository": "example/renamed"
+          }
+        },
+        "after_unknown": {
+          "tags": {},
+          "tags_all": {}
+        }
+      }
+    },
+    {
+      "address": "aws_api_gateway_api_key.mcp",
+      "mode": "managed",
+      "type": "aws_api_gateway_api_key",
+      "name": "mcp",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after": {
+          "name": "bbb-mcp-key",
+          "value": "SENTINEL-SECRET-0d1e-do-not-print"
+        },
+        "after_unknown": {}
+      }
+    }
+  ],
+  "output_changes": {},
+  "applyable": true,
+  "complete": true,
+  "errored": false
+}

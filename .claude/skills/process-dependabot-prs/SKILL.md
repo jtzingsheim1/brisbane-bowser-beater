@@ -1,6 +1,6 @@
 ---
 name: process-dependabot-prs
-description: Reviews this repository's open Dependabot PRs and merges the safe ones one at a time, updating each branch and waiting for CI, then verifies main, the production deploy and npm audit. Use when the user asks to review, merge or action Dependabot PRs, including grouped batches and out-of-band security updates.
+description: Reviews this repository's open Dependabot PRs and merges the safe ones one at a time, updating each branch and waiting for CI, then verifies main, the production deploy, the MCP deploy to AWS and npm audit. Use when the user asks to review, merge or action Dependabot PRs, including grouped batches and out-of-band security updates.
 ---
 
 # Dependabot review and merge
@@ -12,23 +12,29 @@ report it with a recommendation. Keep the report short: what merged, then
 only the decisions needed.
 
 Standing decisions about specific dependencies, such as a major that is
-blocked upstream, live under "Still parked" in `PLAN.md`: follow them instead
-of re-deriving them, and don't update, rebase or re-run CI on a PR parked
-there. Record a new maintainer decision there as a dated event.
+blocked upstream, live in open GitHub issues labelled `parked-dependency`
+(not `dependencies`, which Dependabot puts on its own PRs): follow them instead
+of re-deriving them, and don't update, rebase or re-run CI on a PR one of them
+parks. Record a new maintainer decision as such an issue, and close it when the
+decision no longer applies. No such issue means nothing is parked.
 
 ```
 - [ ] Sync with main
 - [ ] Triage every open PR
 - [ ] Merge the safe ones one at a time, security updates first
-- [ ] Verify main, the deploy and npm audit
+- [ ] Verify main, the Vercel and AWS deploys and npm audit
 - [ ] Report
 ```
 
 ## Sync
 
-Run `git fetch --prune origin`. If the working tree has uncommitted or
+Note the session start time (`date -u +%FT%TZ`) for Verify. Run
+`git fetch --prune origin`. If the working tree has uncommitted or
 unpushed work, stop and ask the user. Otherwise run
 `git checkout --detach origin/main`, and repeat both steps before Verify.
+
+List open issues labelled `mcp-deploy` (read only). Each is a failed or
+gated MCP deploy; report them, since a gated run blocks later deploys.
 
 ## Triage
 
@@ -44,8 +50,7 @@ unpushed work, stop and ask the user. Otherwise run
   app, use the lockfile's `dev` flag. In `mcp/`, run `npm ci && npm run build`,
   then grep `dist/index.mjs` for `node_modules/<pkg>/`; trust a zero only after
   the same grep finds a package known to be bundled, such as `zod`. Shipping
-  never blocks a green merge, but it puts the PR first in the report. A shipped
-  `mcp/` fix only reaches the Lambda at the next `mcp-deploy` run, so say so.
+  never blocks a green merge, but it puts the PR first in the report.
 - For grouped npm PRs, compare `package.json` at `refs/pull/<n>/head` with
   main rather than reading the lockfile diff.
 - Some packages move in lockstep: `vitest` with `@vitest/coverage-v8` (which
@@ -55,12 +60,12 @@ unpushed work, stop and ask the user. Otherwise run
   merge it under the same rules once green. For a vitest major, also run
   `npm test -- --coverage` locally, since PR CI never runs coverage.
 - Terraform bumps must be lockfile-only and within the constraints in
-  `infra/`. They take effect at the next approval-gated `mcp-deploy` run.
+  `infra/`.
 - Actions: every `uses:` keeps its pinning style. SHA pins keep a full SHA
   with a `# vX.Y.Z` comment, identical across workflows. PR CI never runs
-  `configure-aws-credentials`; a bump to it first runs in `corpus-sync`
-  (unattended, on the next corpus-doc push to main) or `mcp-deploy`, so name
-  that in the report.
+  `configure-aws-credentials`; a bump to it first runs unattended on the
+  next merge to main touching an MCP deploy path (`mcp-deploy`) or a corpus
+  doc (`corpus-sync`), so name that in the report.
 - If a PR's diff shows a newer version than its title, merge with a corrected
   commit title.
 - Vercel previews can't verify UI-facing bumps: they show the paused page by
@@ -95,6 +100,21 @@ If anything merged: with main checked out fresh (see Sync), run
 `$(git rev-parse origin/main)`, then `npm audit --package-lock-only` at the
 repo root and in `mcp/`.
 
-Both scripts take the repository from the `origin` remote (override with
+Then run `${CLAUDE_SKILL_DIR}/scripts/wait-mcp-deploy.sh <session start>` in
+the background (up to 40 minutes). A merge touching `mcp/`, `infra/`,
+`analysis/output/cycle_params.json` or `mcp-deploy.yml` (Markdown aside)
+deploys to AWS on merge, and the report confirms it:
+
+- DEPLOYED: one line with the SHA.
+- NOTHING_TO_DEPLOY: one line.
+- FAILED: retry once by dispatching `apply` on main (GitHub MCP
+  `actions_run_trigger`: `run_workflow`, `mcp-deploy.yml`, ref `main`, inputs
+  `{action: apply}`), never by re-running the old run, which would deploy
+  older code. Run the script again and report the outcome, with links.
+- AWAITING_APPROVAL: a decision needed. Give the link and what the plan
+  changes, from the run's `mcp-deploy` issue or the deploy job's log.
+- TIMEOUT: report it, linking the workflow's runs on main.
+
+The scripts take the repository from the `origin` remote (override with
 `REPO=owner/name`) and send `GH_TOKEN` or `GITHUB_TOKEN` when set. Anonymous
 GitHub API calls are limited to 60 an hour.

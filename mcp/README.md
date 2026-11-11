@@ -29,7 +29,8 @@ its source (see "Data and attribution" below).
 
 The docs corpus is a curated allowlist (`mcp/corpus-manifest.txt`) of this
 repository's public documentation, synced to a private bucket when a doc
-merges to main (and after each stack deploy). Internal working notes are
+merges to main (and after a deploy that creates or changes the knowledge
+base or the stores behind it). Internal working notes are
 deliberately excluded, and a unit test enforces both the exclusions and
 the project's language discipline over every corpus file.
 
@@ -70,7 +71,7 @@ curl -s https://13op7uo7ch.execute-api.ap-southeast-2.amazonaws.com/prod/mcp \
 
 Worth knowing before you try it: `ask_docs` is the only tool that costs
 anything to run, and it is bounded by a monthly per-key quota plus an AWS
-budget action that denies Bedrock outright when a small monthly budget is
+budget backstop that denies Bedrock outright when a small monthly budget is
 fully spent. If the
 docs tools ever return errors, that is most likely the backstop having fired,
 not an outage.
@@ -101,18 +102,26 @@ Supabase PostgREST              Bedrock Knowledge Base (bbb-mcp-docs)
   file with esbuild. No framework, no Supabase client library; the data
   layer is two plain-fetch request shapes against one host.
 - **Infrastructure** (`infra/`): one Terraform root module. Lambda, REST
-  API, API key, usage plan, log group, execution role. `terraform destroy`
-  removes the entire footprint in one command.
-- **Deploys** (`.github/workflows/mcp-deploy.yml`): manual workflow with
-  plan / apply / destroy modes, gated behind the `aws` GitHub environment
-  which requires human approval. CI (`ci.yml`) typechecks, tests, builds,
+  API, API keys, usage plan, log group, execution roles, and the RAG
+  stack. `terraform destroy` removes that stack in one command; the
+  GitHub Actions roles, permissions boundaries and cost backstop around
+  it are created by hand in `infra/BOOTSTRAP.md` (see Decommission).
+- **Deploys** (`.github/workflows/mcp-deploy.yml`): runs on every push to
+  main that touches the server, the infrastructure or the bundled cycle
+  model, and on demand (plan / apply / destroy). The plan picks the path.
+  A change that only replaces the Lambda's code or retags resources
+  applies unattended, under a narrow update role. Anything else (IAM, API
+  Gateway, Lambda configuration, new, replaced or deleted resources,
+  destroy) waits for one human approval in a separate GitHub environment,
+  under the deploy role. A health check follows every apply, and a failed
+  or waiting run opens an issue. CI (`ci.yml`) typechecks, tests, builds,
   and `terraform validate`s the subproject on every push with no
   credentials at all.
 - **Docs publishing** (`.github/workflows/corpus-sync.yml`): pushes to
   main that touch a corpus doc re-sync the knowledge base automatically,
   with no approval gate -- the merge was the editorial decision. It runs
   under a separate, narrow role (corpus-bucket writes plus ingestion
-  only) that cannot touch the deployed stack, created by hand in
+  only) that cannot touch the server, its roles or the gateway, created by hand in
   `infra/BOOTSTRAP.md` outside the deploy pipeline's reach; tests hold
   the workflow and the role to that shape.
 
@@ -127,26 +136,42 @@ key rather than across the plan, so the aggregate ceiling scales with the
 number of keys minted. The quota is deliberately small, since `ask_docs` can trigger
 paid generation (the client makes exactly one attempt per request, no SDK
 retries). AWS applies usage-plan quotas on a best-effort basis, so treat
-the number as a tight bound rather than an exact one; the budget action
+the number as a tight bound rather than an exact one; the budget backstop
 below is the firm layer behind it.
 The key value is never a Terraform output and
 never appears in workflow logs; the operator retrieves it directly in
 CloudShell. It does reside (encrypted) in the S3 Terraform state, so the
-set of principals who can read it equals the set who can already call
-`apigateway:get-api-keys` (the deploy role and account admins) -- no
-wider. Rotation is a two-minute self-serve action.
+set of principals who can read it equals the set who can already read
+keys through API Gateway (`apigateway:GET`): account admins and both
+deploy roles, the unattended update role included, since Terraform's
+refresh needs that read -- no wider. A key read that way spends only that
+key's own monthly quota, which the update role cannot change. Rotation is
+self-serve: recreating a key is an API Gateway change, so it goes through
+one approved deploy.
 
 **No long-lived credentials, anywhere.** The AWS account has no IAM users
-and no access keys. Deploys assume a role via GitHub's OIDC provider, and
-the role's trust policy only matches workflow runs of this repository's
-`aws` environment, which requires a named human reviewer. Short-lived
-credentials therefore only ever exist inside a deploy run a human has
-approved.
+and no access keys. Deploys assume one of two roles via GitHub's OIDC
+provider, and each role's trust policy matches workflow runs of exactly
+one GitHub environment of this repository. Both environments are limited
+to `main`, which accepts changes only through pull requests. The *update role* trusts the `aws`
+environment, which has no reviewer, so its powers are what bound it (see
+below). The *deploy role* trusts the `aws-gated` environment, which
+requires a named human reviewer with administrator bypass turned off, so
+its short-lived credentials only ever exist inside a deploy run a human
+has approved.
 
 **Least privilege, both directions.**
 
-- The *deploy role* can manage only resources named `bbb-mcp-*` (IAM,
-  Lambda, the RAG stack's buckets/knowledge base/budget) plus this
+- The *update role* (unattended) can write exactly: the Lambda's code
+  (not its configuration, execution role, timeout or memory), tags on
+  the stack's resources, the docs corpus objects and their ingestion,
+  and the Terraform state. It holds no IAM write, no `iam:PassRole`, no
+  API Gateway write and no permission to invoke the function. Its reads
+  are wildcards on the stack's resources, so a provider upgrade that
+  reads something new does not break it; a plan that needs any write
+  beyond the list above fails closed and waits for the deploy role.
+- The *deploy role* (approval-gated) can manage only resources named
+  `bbb-mcp-*` (IAM, Lambda, the RAG stack's buckets/knowledge base) plus this
   region's API Gateway surface, this region's CloudWatch log groups
   (neither can be name-scoped: API Gateway ARNs carry ids, and the log
   group statement covers lifecycle on `log-group:*`), and the single
@@ -155,7 +180,8 @@ approved.
   code and the roles that code runs as is inherently powerful within the
   account, so the operative control is that every session of it requires
   a human-approved workflow run -- the name scoping is blast-radius
-  hygiene inside a single-purpose account, not a sandbox. What narrows
+  hygiene inside a single-purpose account, not a sandbox. Neither deploy
+  role can write the cost backstop or detach its deny policy. What narrows
   that caveat, applied to the live account on 2026-08-23: each role the
   deploy role creates carries a permissions boundary it cannot create,
   edit, remove, or swap, so the policies it writes are capped by a
@@ -169,10 +195,11 @@ approved.
   invoke generation through the one pinned inference profile (Claude Haiku
   4.5 in the two `au.` destination regions). That is the complete list;
   the running server can reach no other AWS API by construction. Its
-  permissions boundary bounds that to logs, Bedrock, corpus reads and
-  vector operations even if its policy were rewritten -- notably it
-  carries no IAM actions, so a rewritten policy cannot reach the
-  `bedrock:*` deny policy the cost backstop attaches to this same role.
+  permissions boundary bounds that to logs, Bedrock (model calls on two
+  models only: the Titan embedding model and the pinned Haiku profile),
+  corpus reads and vector operations even if its policy were rewritten
+  -- notably it carries no IAM actions, so a rewritten policy cannot
+  reach the deny policy the cost backstop attaches to this same role.
 
 **What the server can and cannot do.**
 
@@ -211,18 +238,29 @@ can spend money, so spending is bounded in AWS itself, not only in code:
    attempt per request (no retries), at most 4 retrieved chunks on the
    generation path (8 for retrieval-only `search_docs`), 500 output
    tokens, temperature 0.
-4. A **budget action** (a small Terraform-managed monthly budget,
-   `budget_limit_usd`, on actual costs, account-wide) attaches a
-   customer-managed `Deny bedrock:*` policy to
-   the server's execution role at 100% of budget -- automatic approval, no
-   human in the loop, and its own permissions are pinned so it can only
-   ever attach that one policy to that one role. Budgets cost data lags by
-   hours; layers 1-3 bound spending inside that window, and this layer
-   ends it afterwards, staying attached until an operator resets it
-   (recovery steps in `infra/BOOTSTRAP.md`). The armed state shows as
-   **Standby** in the AWS Budgets console.
+4. A **budget backstop**, owned by a human outside the Terraform stack
+   (`infra/BOOTSTRAP.md` section 3d): a small monthly budget on actual
+   costs, account-wide, whose action at 100% attaches a customer-managed
+   deny policy (Bedrock, CloudWatch Logs ingestion, S3 writes) to every
+   role that can spend -- the server and knowledge-base roles, the
+   update role and the corpus-sync role. Automatic approval, no human in
+   the loop, and the action's own permissions are pinned so it can only
+   ever attach that one policy to those roles. Neither deploy role can
+   change the budget, its action or the deny policy, or detach the deny
+   once applied. Budgets cost data lags by hours; layers 1-3 and layer 6
+   bound spending inside that window, and this layer ends it afterwards,
+   staying attached until an operator resets it (recovery steps in
+   `infra/BOOTSTRAP.md`). While it is attached, every deploy takes the
+   approval-gated path. The armed state shows as **Standby** in the AWS
+   Budgets console.
 5. **No long-lived credentials** anywhere (below), so there is no key to
    steal that could bypass the gateway and invoke models directly.
+6. **Two models, rate-capped.** The workload permissions boundary allows
+   model calls on exactly two models (the Titan embedding model and the
+   pinned Haiku inference profile), and the account's Bedrock on-demand
+   quotas for those models, set in Service Quotas, cap requests and
+   tokens per minute. Model spend therefore has a per-minute ceiling
+   whichever role makes the call, until layer 4 ends it.
 
 **Retrieved text is data.** The RAG corpus is this repository's own
 committed documentation, curated by an explicit manifest, so retrieved
@@ -252,11 +290,15 @@ visitors can, within the same throttle, quota, and cost guards. Full compromise 
 nothing else: BBB's website, database, and data pipelines share none of
 this account's infrastructure.
 
-**Decommission.** Run the deploy workflow in `destroy` mode (still gated by
-the same human approval). The one-time bootstrap resources outside the
-stack (OIDC provider, deploy role, corpus-sync role, state bucket, budget)
-are removed with the reverse of the bootstrap script, documented in
-[`infra/BOOTSTRAP.md`](../infra/BOOTSTRAP.md).
+**Decommission.** `terraform destroy` removes the deployed stack only, so
+the full teardown follows the order in
+[`infra/BOOTSTRAP.md`](../infra/BOOTSTRAP.md), "Decommissioning": detach
+the backstop's deny policy by hand if it has fired; run the deploy
+workflow in `destroy` mode, which always takes the approval-gated path;
+delete both deploy roles, so that no later merge to main can rebuild the
+stack; delete the cost backstop; then, optionally, the remaining one-time
+bootstrap resources (OIDC provider, corpus-sync role, state bucket,
+permissions boundaries).
 
 ## Development
 
