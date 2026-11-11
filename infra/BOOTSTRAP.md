@@ -1873,8 +1873,6 @@ it), then the narrowing. Do the steps in this order.
      --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition' --output json
    ```
 
-   Then record the dated events in `PLAN.md`.
-
 **Rollback.** Adding a reviewer back to `aws` stops unattended deploys at
 once: every run then waits for an approval. Never move the backstop back
 into Terraform without `import` blocks, or Terraform will try to create

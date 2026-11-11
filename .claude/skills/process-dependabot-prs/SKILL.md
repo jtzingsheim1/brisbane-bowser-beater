@@ -12,9 +12,10 @@ report it with a recommendation. Keep the report short: what merged, then
 only the decisions needed.
 
 Standing decisions about specific dependencies, such as a major that is
-blocked upstream, live under "Still parked" in `PLAN.md`: follow them instead
-of re-deriving them, and don't update, rebase or re-run CI on a PR parked
-there. Record a new maintainer decision there as a dated event.
+blocked upstream, live in open GitHub issues labelled `dependencies`: follow
+them instead of re-deriving them, and don't update, rebase or re-run CI on a
+PR one of them parks. Record a new maintainer decision as such an issue, and
+close it when the decision no longer applies.
 
 ```
 - [ ] Sync with main

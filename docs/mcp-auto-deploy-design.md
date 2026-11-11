@@ -5,8 +5,7 @@ main. Drafted 2026-11-11, reviewed in three rounds by fresh independent
 reviewers, approved by the maintainer the same day, then built and merged
 in 2026-11 (PR #188). This document records the problem, the threat
 analysis, the design as built, the decisions as dated events and where
-the build departed from the approved draft. Status lives in `PLAN.md`;
-the operator steps live in `infra/BOOTSTRAP.md`, "Update for auto-deploy".
+the build departed from the approved draft. The operator steps live in `infra/BOOTSTRAP.md`, "Update for auto-deploy".
 
 It stays out of the `ask_docs` corpus (decision D3): its threat analysis
 names weaknesses that the corpus docs instead state as bounds.
@@ -39,7 +38,7 @@ left `get_cycle_model` serving the old fit until a manual deploy.
   acceptable when its role can do little.
 - 2026-08-24, same PR: ungated code and infra deploys were considered and
   dropped: "the doc toil that motivated it is gone and the gate costs
-  nothing" (`PLAN.md`).
+  nothing" (recorded in `PLAN.md`, since retired).
 - 2026-11-11: with the project in caretaker mode, the gate cost two
   manual steps every week and stale deploys had become a real failure
   mode. This design reversed the 2026-08-24 decision for one narrow kind
@@ -479,7 +478,7 @@ narrow. What the maintainer runs:
 5. **GitHub**: remove the reviewer from `aws`; delete the `ALERT_EMAIL`
    repository variable, which nothing reads any more.
 6. **Verify** with a dispatched `apply` (a no-op, which should run
-   unattended to "no changes"), and record the dated events in `PLAN.md`.
+   unattended to "no changes".
 
 Rollback: adding a reviewer back to `aws` stops unattended deploys at once
 (each run then needs approval). Never move the backstop back into

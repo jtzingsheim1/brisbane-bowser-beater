@@ -11,4 +11,4 @@
 - [ ] No secrets in the diff
 - [ ] Language discipline ("Legal hygiene")
 - [ ] Any new Supabase table has explicit grants ("Coding conventions")
-- [ ] `PLAN.md` updated if this changes project status ("Docs discipline")
+- [ ] No status or progress written into docs ("Docs discipline")
