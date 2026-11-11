@@ -1750,6 +1750,13 @@ it), then the narrowing. Do the steps in this order.
    actions. The gated job asks for a second approval on `aws-gated`.
    That apply forgets the five old backstop resources (the `removed`
    blocks in `infra/rag.tf`) without deleting them. Approve both.
+   The run then shows a failed smoke test at its last check (reading
+   the new backstop's status): until Paste B, the deploy role still has
+   its old policy, which cannot read `bbb-backstop-*`. That failure is
+   expected, and it opens an `mcp-deploy` issue that the step 6 run
+   closes. Check instead that the `deploy-gated` job paused for your
+   approval before it ran: if it started without one, the `aws-gated`
+   reviewer is not in effect, so fix that before step 5.
 4. **Paste B: CloudShell, only after that gated apply succeeds.** Never
    run it early: deleting the old backstop while Terraform still tracks
    it would make the next plan try to recreate it. First, on GitHub,
@@ -1865,8 +1872,6 @@ it), then the narrowing. Do the steps in this order.
    aws iam get-role --role-name bbb-mcp-deploy \
      --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition' --output json
    ```
-
-   Then record the dated events in `PLAN.md`.
 
 **Rollback.** Adding a reviewer back to `aws` stops unattended deploys at
 once: every run then waits for an approval. Never move the backstop back

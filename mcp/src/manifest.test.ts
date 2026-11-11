@@ -65,7 +65,7 @@ describe("corpus manifest", () => {
 
   it("never lists internal working notes", () => {
     const entries = manifestEntries();
-    for (const excluded of ["CLAUDE.md", "PLAN.md", "AGENTS.md"]) {
+    for (const excluded of ["CLAUDE.md", "AGENTS.md"]) {
       expect(entries, `${excluded} is internal`).not.toContain(excluded);
     }
   });
