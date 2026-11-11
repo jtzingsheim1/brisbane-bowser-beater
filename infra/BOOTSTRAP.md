@@ -1732,10 +1732,9 @@ it), then the narrowing. Do the steps in this order.
        --output table
      ```
 
-     Record the on-demand requests-per-minute and tokens-per-minute
-     values for both models, and the worst-case monthly spend they allow.
-     Lower them through Service Quotas only if that figure exceeds the
-     backstop's monthly limit.
+     Note the requests-per-minute and tokens-per-minute values for both
+     models. On 2026-11-11 they were read and left at the AWS defaults
+     (design D4).
    - **Create the `aws-gated` environment** exactly as Step 4.2
      describes (you as required reviewer, admin bypass unticked, `main`
      only). Leave `aws` as it is for now: it keeps its reviewer until

@@ -173,11 +173,10 @@ What lands where:
   the locals in `infra/rag.tf`. Getting this wrong breaks the live
   `ask_docs` the moment the boundary is pasted, so the migration checks
   `ask_docs` straight after the paste.
-- **Rate cap.** The account's Bedrock on-demand quotas for those two
-  models cap spend per minute, whichever role holds the credentials, which
-  makes them the control that keeps the worst case small. The migration
-  reads the current values and lowers them through Service Quotas only if
-  the worst case they allow exceeds the backstop's monthly limit (D4).
+- **Rate quotas.** The account's Bedrock on-demand quotas for those two
+  models put a per-minute ceiling on model spend, whichever role holds the
+  credentials. They were read at migration and left at the AWS defaults
+  (D4).
 - **The backstop doesn't re-arm itself.** Once it fires, the deny stays
   until a human resets it (BOOTSTRAP "If the backstop ever fires":
   reverse the action, which detaches through the action's own role,
@@ -357,15 +356,15 @@ Attacker code on main, deployed unattended, can:
 The cost bound, per service, until the backstop fires (Budgets' reporting
 lag, up to about a day, plus the time to notice):
 
-- Bedrock: the Service Quotas rate cap on the two models.
+- Bedrock: the account's on-demand rate quotas on the two models.
 - CloudWatch Logs ingestion and S3 requests: uncapped by quota, but cut
   off by the backstop's deny on every role that can spend.
 - Lambda compute: the gateway quota times the unchanged 25-second
   timeout and 256 MB.
 - Lambda egress: bounded by the same compute, small at this size.
 
-So the total is a small, known number, not an open-ended one; the
-migration computes the Bedrock part from the account's quota values (D4).
+So spend is rate-limited per minute and ended by the backstop, not
+open-ended.
 
 It cannot create or reshape roles, change Lambda configuration, open an
 endpoint, change API Gateway, call other models, or touch the backstop.
@@ -379,7 +378,7 @@ this design too, and it is why its runs stay behind an approval.
 
 The same credential bound applied to every deploy before this design,
 gated or not, because approvals were given without reading code. This
-design doesn't widen it; the rate cap and the model scope narrow it.
+design doesn't widen it; the model scope narrows it.
 
 ## 7. Tests
 
@@ -458,7 +457,7 @@ narrow. What the maintainer runs:
    role's policy. Then one `ask_docs` question to confirm the narrowed
    boundary.
 2. **Before merge, console and GitHub**: read the two Bedrock quota
-   values (lower them only per D4); create `aws-gated`; add the
+   values (D4); create `aws-gated`; add the
    `AWS_UPDATE_ROLE_ARN` variable; protect main (D2).
 3. **Merge.** `aws` still has its reviewer, so the push run asks for
    approval of the update-role job. It routes to `deploy-gated` either
@@ -510,10 +509,9 @@ resources that already exist.
 - **D3. This document stays out of the `ask_docs` corpus.** Its threat
   analysis names weaknesses, which `ask_docs` would serve verbatim. The
   corpus docs state each role's bound instead.
-- **D4. Bedrock rate cap: measure first.** The worst-case figure comes
-  from the account's Service Quotas values for the two models at
-  migration. The quotas are lowered only if that figure exceeds the
-  monthly budget.
+- **D4. Bedrock rate quotas: left at the AWS defaults.** The plan was to
+  read the two models' quotas at migration and lower them if needed. They
+  were read on 2026-11-11, and the maintainer accepted them as they are.
 
 ## 12. Review history
 
