@@ -66,10 +66,13 @@ and the `aws` environment is limited to `main`. So whoever can put code on
 main controls what a push-triggered deploy runs:
 
 - the maintainer;
-- Claude sessions through the Claude GitHub App, which can merge PRs. Per
-  Anthropic's documented permissions the app has Actions read only, so it
-  can't dispatch or re-run workflows. The build confirms this first,
-  before anything relies on it;
+- Claude sessions, through the GitHub tools they use, which can merge PRs
+  and (probed 2026-11-11) dispatch workflows. Anthropic's documented
+  permission list for the app says Actions read only, but a dispatch of
+  a workflow to a nonexistent ref passed authorisation and failed only on
+  the ref. So a session can start any workflow on main. For this design
+  that equals a push (it deploys main), and destroy, IAM and
+  configuration changes still need the maintainer's approval;
 - a leaked write token, or an admin token, which can push to main;
 - dependency code: npm packages decide what the bundle contains, and
   Terraform providers and pinned actions run in jobs that can mint a
@@ -167,11 +170,11 @@ What lands where:
   this wrong breaks the live `ask_docs` the moment the boundary is
   pasted, so the build checks it against the server role's own policy
   first.
-- **Rate cap (new, maintainer, console).** Lower this account's Bedrock
-  on-demand quotas for those two models through Service Quotas, to a
-  level comfortably above `ask_docs`' real use. This is the control that
-  makes the worst case small, because it caps spend per hour even with
-  stolen credentials.
+- **Rate cap.** The account's Bedrock on-demand quotas for those two
+  models cap spend per hour, even with stolen credentials, which makes
+  them the control that keeps the worst case small. The build computes
+  the worst case from the current values and lowers them through Service
+  Quotas only if needed (D4).
 - **The backstop doesn't re-arm itself.** Once it fires, the deny stays
   until a human resets it (BOOTSTRAP "If the backstop ever fires"). While
   it is applied, deploys still succeed, but the apply-time ingestion is
@@ -251,10 +254,10 @@ exercise the handler with real MCP requests.
   `issues: write`; `build` doesn't.
 - A gated run waiting for approval blocks later deploys in the
   concurrency group. The issue says so, and so does the weekly report.
-- A failed run needs a person to start a new one, because the Claude app
-  can't. The issue links to a dispatch of `apply` on main, never to
-  "re-run" of the old run, which would deploy older code over a newer
-  successful deploy.
+- A failed run is retried by dispatching `apply` on main, never by
+  re-running the old run, which would deploy older code over a newer
+  successful deploy. The weekly session retries once by itself; a second
+  failure is reported, and the issue links the same dispatch.
 
 ### 5.6 Reporting (Dependabot skill)
 
@@ -458,9 +461,11 @@ forget, then narrow:
    - add the `aws-gated` subject to the deploy role's trust, keeping
      `aws` for now.
 3. **Maintainer, console and GitHub:**
-   - lower the Bedrock quotas;
+   - read the two Bedrock quota values, and lower them only if D4 says
+     to;
    - create `aws-gated`;
-   - add the `AWS_UPDATE_ROLE_ARN` variable.
+   - add the `AWS_UPDATE_ROLE_ARN` variable;
+   - branch protection on main (D2).
 4. **Merge.** `aws` still has its reviewer, so the push run asks for
    approval of the update-role job. Its plan refresh can't read the old
    backstop, so it routes to `deploy-gated`, a second approval, which
@@ -491,25 +496,23 @@ already exist.
 | Normal Wednesday (bumps, code) | None. The report says "MCP deployed at <sha>" |
 | A gated change (IAM, config, new resource) | One tap on the notification |
 | A provider bump needs a write the update role lacks | One tap (it routes to gated). Widening the update role is optional |
-| A failed deploy | Read the issue email; one click to dispatch `apply` on main, or a fix PR |
+| A transient failure | None: the weekly session retries once |
+| A persistent failure | Read the report or issue; a fix PR, or one dispatch of `apply` on main |
 
-## 11. Decisions for the maintainer
+## 11. Decisions (maintainer, 2026-11-11)
 
-- **D1. Gated runs: queued by the merge, or started by you.**
-  - (a) **Queued by the merge, approved with one tap.** Recommended. It is
-    exactly today's security model for these rare runs.
-  - (b) **Only you can start them, by dispatch.** No reviewer click, but a
-    dispatch is more steps than a tap. Doing it as a real control (so a
-    push can never request a deploy-role run) means customising the OIDC
-    subject claim repo-wide and updating all three trust policies in one
-    sitting. That is stronger, and more work.
-- **D2. Branch protection on main.** Turn on "enforce for admins" and
-  require a pull request. Recommended, since main is now the trust
-  boundary. The cost: no direct pushes to main, even by you.
-- **D3. Corpus.** Keep this document out of the `ask_docs` corpus.
-  Recommended (section 8).
-- **D4. Bedrock rate cap.** Lower the two models' quotas. Recommended;
-  the build proposes a value from `ask_docs`' real use.
+- **D1. Gated runs are queued by the merge and approved with one tap.**
+  This is the existing security model for these rare runs. Considered
+  and not taken: limiting gated runs to maintainer dispatch, enforced by
+  customising the OIDC subject claim repo-wide.
+- **D2. Branch protection on main:** "enforce for admins" on, and a pull
+  request required (0 approvals, so a single maintainer and the
+  Dependabot session can still merge). Set during migration.
+- **D3. This document stays out of the `ask_docs` corpus** (section 8).
+- **D4. Bedrock rate cap: measure first.** The build computes the
+  worst-case figure from the account's current Service Quotas values for
+  the two models. The quotas are lowered only if that figure exceeds the
+  monthly budget; either way the figure is recorded.
 
 ## Doc discipline for this document
 
