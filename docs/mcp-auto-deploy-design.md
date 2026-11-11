@@ -3,7 +3,7 @@
 The design for deploying the MCP stack (`mcp/`, `infra/`) on merge to
 main. Drafted 2026-11-11, reviewed in three rounds by fresh independent
 reviewers, approved by the maintainer the same day, then built and merged
-in 2026-11 (PR #TBD). This document records the problem, the threat
+in 2026-11 (PR #188). This document records the problem, the threat
 analysis, the design as built, the decisions as dated events and where
 the build departed from the approved draft. Status lives in `PLAN.md`;
 the operator steps live in `infra/BOOTSTRAP.md`, "Update for auto-deploy".
