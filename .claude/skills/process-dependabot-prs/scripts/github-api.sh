@@ -1,5 +1,5 @@
-# Sourced by wait-checks.sh and wait-deploy.sh: repository detection and
-# GitHub REST GETs that report failures instead of hiding them.
+# Sourced by wait-checks.sh, wait-deploy.sh and wait-mcp-deploy.sh: repository
+# detection and GitHub REST GETs that report failures instead of hiding them.
 REPO="${REPO:-$(git remote get-url origin 2>/dev/null | sed -E 's#/$##; s#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')}"
 [ -n "$REPO" ] || { echo "set REPO=owner/name (no origin remote found)"; exit 2; }
 API="https://api.github.com/repos/$REPO"
